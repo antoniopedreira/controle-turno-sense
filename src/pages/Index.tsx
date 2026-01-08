@@ -1,21 +1,42 @@
+import { useState } from 'react';
 import { Users, UserCheck, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
+import { DashboardHeader, FilterPeriod } from '@/components/dashboard/DashboardHeader';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { AlertList } from '@/components/dashboard/AlertList';
 import { PerformanceChart } from '@/components/dashboard/PerformanceChart';
 import { ProfessorRanking } from '@/components/dashboard/ProfessorRanking';
+import { startOfMonth, endOfMonth, format } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import type { AulaAlerta, PerformanceHorario, ProfessorRanking as ProfessorRankingType } from '@/data/mockDashboardData';
 
 const Index = () => {
-  // Buscar dados da view_dashboard_didatico
+  const today = new Date();
+  
+  // Filtro padrão: Este Mês
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('month');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: startOfMonth(today),
+    to: endOfMonth(today),
+  });
+
+  // Buscar dados da view_dashboard_didatico com filtro de data
   const { data: dashboardData, isLoading, refetch } = useQuery({
-    queryKey: ['dashboard-data'],
+    queryKey: ['dashboard-data', dateRange?.from, dateRange?.to],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('view_dashboard_didatico')
-        .select('*');
+      let query = supabase.from('view_dashboard_didatico').select('*');
+      
+      if (dateRange?.from) {
+        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
+        query = query.gte('data_iso', fromDate);
+      }
+      if (dateRange?.to) {
+        const toDate = format(dateRange.to, 'yyyy-MM-dd');
+        query = query.lte('data_iso', toDate);
+      }
+      
+      const { data, error } = await query;
       
       if (error) throw error;
       return data;
@@ -74,7 +95,6 @@ const Index = () => {
   const professorMap = new Map<string, number>();
   processedData.forEach(aula => {
     if (!aula.professores) return;
-    // Pode haver múltiplos professores separados por vírgula
     const profs = aula.professores.split(',').map(p => p.trim());
     profs.forEach(prof => {
       if (prof) {
@@ -98,7 +118,14 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <DashboardHeader onRefresh={handleRefresh} isLoading={isLoading} />
+        <DashboardHeader 
+          onRefresh={handleRefresh} 
+          isLoading={isLoading}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          filterPeriod={filterPeriod}
+          onFilterPeriodChange={setFilterPeriod}
+        />
 
         {/* Seção 1: O Placar do Dia - KPIs Gigantes */}
         <section className="mb-8">
@@ -108,7 +135,7 @@ const Index = () => {
               value={totalAlunos}
               icon={<Users className="w-6 h-6" />}
               status="neutral"
-              subtitle="Alunos ativos hoje"
+              subtitle="Alunos no período"
               delay={0}
             />
             
