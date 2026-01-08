@@ -1,25 +1,92 @@
-import { useState } from 'react';
 import { Users, UserCheck, AlertTriangle } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { AlertList } from '@/components/dashboard/AlertList';
 import { PerformanceChart } from '@/components/dashboard/PerformanceChart';
 import { ProfessorRanking } from '@/components/dashboard/ProfessorRanking';
-import { 
-  mockKPIs, 
-  mockAulasAlerta, 
-  mockPerformanceHorario, 
-  mockProfessorRanking 
-} from '@/data/mockDashboardData';
+import type { AulaAlerta, PerformanceHorario, ProfessorRanking as ProfessorRankingType } from '@/data/mockDashboardData';
 
 const Index = () => {
-  const [isLoading, setIsLoading] = useState(false);
+  // Buscar dados da view_dashboard_didatico
+  const { data: dashboardData, isLoading, refetch } = useQuery({
+    queryKey: ['dashboard-data'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('view_dashboard_didatico')
+        .select('*');
+      
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const handleRefresh = () => {
-    setIsLoading(true);
-    // Simula um refresh - será substituído por chamada real ao banco
-    setTimeout(() => setIsLoading(false), 1000);
+    refetch();
   };
+
+  // Processar dados para os componentes
+  const processedData = dashboardData || [];
+
+  // Total de alunos únicos
+  const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
+
+  // Média de alunos por professor
+  const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
+  const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
+
+  // Aulas em alerta (status vermelho)
+  const aulasEmAlerta: AulaAlerta[] = processedData
+    .filter(aula => aula.status_aula?.includes('🔴'))
+    .map(aula => ({
+      id: aula.aula_id || '',
+      data: aula.data_aula || '',
+      horario: aula.horario || '',
+      professores: aula.professores || '',
+      qtdAlunos: aula.qtd_alunos || 0,
+      status: aula.status_aula || '',
+      corIndicadora: (aula.cor_indicadora as 'red' | 'yellow' | 'green') || 'red',
+    }));
+
+  // Performance por horário (agrupa por horário)
+  const horarioMap = new Map<string, { total: number; count: number; cor: string }>();
+  processedData.forEach(aula => {
+    if (!aula.horario) return;
+    const hora = aula.horario.split(':')[0] + 'h';
+    const existing = horarioMap.get(hora) || { total: 0, count: 0, cor: 'green' };
+    horarioMap.set(hora, {
+      total: existing.total + (aula.razao_aluno_prof || 0),
+      count: existing.count + 1,
+      cor: aula.cor_indicadora || 'green',
+    });
+  });
+
+  const performanceHorario: PerformanceHorario[] = Array.from(horarioMap.entries())
+    .map(([horario, data]) => ({
+      horario,
+      mediaAlunos: data.count > 0 ? data.total / data.count : 0,
+      corIndicadora: (data.cor as 'red' | 'yellow' | 'green'),
+    }))
+    .sort((a, b) => a.horario.localeCompare(b.horario));
+
+  // Ranking de professores
+  const professorMap = new Map<string, number>();
+  processedData.forEach(aula => {
+    if (!aula.professores) return;
+    // Pode haver múltiplos professores separados por vírgula
+    const profs = aula.professores.split(',').map(p => p.trim());
+    profs.forEach(prof => {
+      if (prof) {
+        professorMap.set(prof, (professorMap.get(prof) || 0) + (aula.qtd_alunos || 0));
+      }
+    });
+  });
+
+  const professorRanking: ProfessorRankingType[] = Array.from(professorMap.entries())
+    .map(([nome, totalAlunos]) => ({ nome, totalAlunos }))
+    .sort((a, b) => b.totalAlunos - a.totalAlunos)
+    .slice(0, 5);
 
   // Determina o status da média de alunos por professor
   const getMediaStatus = (media: number): 'danger' | 'warning' | 'success' => {
@@ -27,11 +94,6 @@ const Index = () => {
     if (media > 5) return 'success';
     return 'warning';
   };
-
-  // Filtra apenas aulas em alerta (status vermelho)
-  const aulasEmAlerta = mockAulasAlerta.filter(
-    aula => aula.status.includes('🔴')
-  );
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -43,7 +105,7 @@ const Index = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <KPICard
               label="Total de Alunos"
-              value={mockKPIs.totalAlunos}
+              value={totalAlunos}
               icon={<Users className="w-6 h-6" />}
               status="neutral"
               subtitle="Alunos ativos hoje"
@@ -52,13 +114,13 @@ const Index = () => {
             
             <KPICard
               label="Média Alunos/Professor"
-              value={mockKPIs.mediaAlunosPorProfessor.toFixed(1)}
+              value={mediaAlunosPorProfessor.toFixed(1)}
               icon={<UserCheck className="w-6 h-6" />}
-              status={getMediaStatus(mockKPIs.mediaAlunosPorProfessor)}
+              status={getMediaStatus(mediaAlunosPorProfessor)}
               subtitle={
-                mockKPIs.mediaAlunosPorProfessor < 3 
+                mediaAlunosPorProfessor < 3 
                   ? 'Abaixo do ideal! Meta: 3+' 
-                  : mockKPIs.mediaAlunosPorProfessor > 5 
+                  : mediaAlunosPorProfessor > 5 
                     ? 'Excelente performance!'
                     : 'Dentro da meta'
               }
@@ -87,8 +149,8 @@ const Index = () => {
 
         {/* Seção 3 e 4: Gráficos lado a lado em telas grandes */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <PerformanceChart data={mockPerformanceHorario} />
-          <ProfessorRanking data={mockProfessorRanking} />
+          <PerformanceChart data={performanceHorario} />
+          <ProfessorRanking data={professorRanking} />
         </section>
       </div>
     </div>
