@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, UserCheck, AlertTriangle, Clock } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar } from "lucide-react"; // Adicionado Filter e Calendar
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardHeader";
@@ -10,8 +10,11 @@ import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
 import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
 import { TimeFilter } from "@/components/dashboard/TimeFilter";
-import { FullHistoryDialog } from "@/components/dashboard/FullHistoryDialog"; // [NOVO IMPORT]
+import { FullHistoryDialog } from "@/components/dashboard/FullHistoryDialog";
 import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { Button } from "@/components/ui/button"; // Import necessário para os botões de filtro
+import { Badge } from "@/components/ui/badge"; // Import necessário para o badge de contagem
+import { Separator } from "@/components/ui/separator";
 import type { DateRange } from "react-day-picker";
 import type { PerformanceHorario, ProfessorRanking as ProfessorRankingType } from "@/data/mockDashboardData";
 
@@ -54,6 +57,10 @@ const Index = () => {
 
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
   const [selectedTime, setSelectedTime] = useState<string>("all");
+
+  // Estado visual dos filtros retráteis
+  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
+  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
 
   // Busca dados
   const {
@@ -100,7 +107,7 @@ const Index = () => {
         if (!isWithinInterval(rowDate, { start, end })) return;
       }
 
-      // Normalização de Hora (remove 'h' e garante '05h')
+      // Normalização de Hora
       const rawHour = row.horario ? row.horario.replace(/h/gi, "").split(":")[0] : "00";
       const normalizedTime = rawHour.padStart(2, "0") + "h";
 
@@ -220,11 +227,14 @@ const Index = () => {
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
 
-  // KPIs
+  // KPIS
   const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
   const totalHorasPagas = processedData.reduce((acc, aula) => acc + (aula.qtd_professores || 0), 0);
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
+
+  // [NOVO KPI] Total de Aulas (Contagem de Turmas)
+  const totalAulas = processedData.length;
 
   const aulasEmAlerta = processedData
     .filter((aula) => aula.status_aula?.includes("🔴"))
@@ -299,18 +309,79 @@ const Index = () => {
           onFilterPeriodChange={setFilterPeriod}
         />
 
-        {/* Container para Filtros */}
-        <div className="mb-6 space-y-4">
-          <ClassTypeFilter
-            classTypes={classTypes}
-            selectedType={selectedClassType}
-            onTypeChange={setSelectedClassType}
-          />
-          <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
+        {/* === ZONA DE FILTROS RETRÁTEIS === */}
+        <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
+          {/* 1. Filtro Tipo de Aula */}
+          <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
+            <Button
+              variant={isTypeFilterOpen ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setIsTypeFilterOpen(!isTypeFilterOpen)}
+              className="gap-2 h-9"
+            >
+              <Filter className="w-4 h-4 text-primary" />
+              <span className="font-medium">Tipo de Aula</span>
+              {selectedClassType !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 h-5 px-1.5 text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  {selectedClassType}
+                </Badge>
+              )}
+            </Button>
+
+            {/* Conteúdo Retrátil */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "w-auto opacity-100 max-w-[500px]" : "w-0 opacity-0 max-w-0"}`}
+            >
+              <div className="pr-2 whitespace-nowrap">
+                <ClassTypeFilter
+                  classTypes={classTypes}
+                  selectedType={selectedClassType}
+                  onTypeChange={setSelectedClassType}
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator orientation="vertical" className="h-6 hidden sm:block" />
+
+          {/* 2. Filtro Horários */}
+          <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
+            <Button
+              variant={isTimeFilterOpen ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setIsTimeFilterOpen(!isTimeFilterOpen)}
+              className="gap-2 h-9"
+            >
+              <Clock className="w-4 h-4 text-primary" />
+              <span className="font-medium">Horários</span>
+              {selectedTime !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 h-5 px-1.5 text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  {selectedTime}
+                </Badge>
+              )}
+            </Button>
+
+            {/* Conteúdo Retrátil */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "w-auto opacity-100 max-w-[500px]" : "w-0 opacity-0 max-w-0"}`}
+            >
+              <div className="pr-2 w-[250px] sm:w-[400px]">
+                <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
+              </div>
+            </div>
+          </div>
         </div>
+        {/* ================================= */}
 
         <section className="mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          {/* Ajustado para 5 colunas em telas muito grandes, ou wrap natural */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
             <KPICard
               label="Total de Alunos"
               value={totalAlunos}
@@ -319,6 +390,7 @@ const Index = () => {
               subtitle="Alunos no período"
               delay={0}
             />
+
             <KPICard
               label="Horas Pagas"
               value={totalHorasPagas}
@@ -327,6 +399,17 @@ const Index = () => {
               subtitle="Total horas de aula"
               delay={50}
             />
+
+            {/* [NOVO CARD] Total de Aulas */}
+            <KPICard
+              label="Total de Aulas"
+              value={totalAulas}
+              icon={<Calendar className="w-6 h-6" />}
+              status="neutral"
+              subtitle="Turmas realizadas"
+              delay={75}
+            />
+
             <KPICard
               label="Média Alunos/Professor"
               value={mediaAlunosPorProfessor.toFixed(1)}
@@ -335,12 +418,13 @@ const Index = () => {
               subtitle={getMetaText()}
               delay={100}
             />
+
             <KPICard
               label="Aulas em Alerta"
               value={aulasEmAlerta.length}
               icon={<AlertTriangle className="w-6 h-6" />}
               status={aulasEmAlerta.length > 0 ? "danger" : "success"}
-              subtitle={aulasEmAlerta.length > 0 ? "Precisam de atenção imediata" : "Nenhum alerta!"}
+              subtitle={aulasEmAlerta.length > 0 ? "Precisam de atenção" : "Nenhum alerta!"}
               delay={200}
             />
           </div>
@@ -349,8 +433,7 @@ const Index = () => {
         {/* Lista de Alertas e Botão Ver Tudo */}
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div /> {/* Espaçador */}
-            {/* [NOVO BOTÃO] */}
+            <div />
             <FullHistoryDialog aulas={processedData} />
           </div>
           <AlertList aulas={aulasEmAlerta as any} />
