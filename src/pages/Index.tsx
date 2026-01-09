@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar } from "lucide-react"; // Adicionado Filter e Calendar
+import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar, History } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardHeader";
@@ -12,8 +12,8 @@ import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart"
 import { TimeFilter } from "@/components/dashboard/TimeFilter";
 import { FullHistoryDialog } from "@/components/dashboard/FullHistoryDialog";
 import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
-import { Button } from "@/components/ui/button"; // Import necessário para os botões de filtro
-import { Badge } from "@/components/ui/badge"; // Import necessário para o badge de contagem
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { DateRange } from "react-day-picker";
 import type { PerformanceHorario, ProfessorRanking as ProfessorRankingType } from "@/data/mockDashboardData";
@@ -233,7 +233,7 @@ const Index = () => {
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
 
-  // [NOVO KPI] Total de Aulas (Contagem de Turmas)
+  // KPI Total de Aulas
   const totalAulas = processedData.length;
 
   const aulasEmAlerta = processedData
@@ -320,8 +320,11 @@ const Index = () => {
               className="gap-2 h-9"
             >
               <Filter className="w-4 h-4 text-primary" />
-              <span className="font-medium">Tipo de Aula</span>
-              {selectedClassType !== "all" && (
+              {/* Texto some quando aberto */}
+              {!isTypeFilterOpen && <span className="font-medium">Tipo de Aula</span>}
+
+              {/* Badge só aparece se selecionado e fechado */}
+              {selectedClassType !== "all" && !isTypeFilterOpen && (
                 <Badge
                   variant="secondary"
                   className="ml-1 h-5 px-1.5 text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
@@ -335,7 +338,8 @@ const Index = () => {
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "w-auto opacity-100 max-w-[500px]" : "w-0 opacity-0 max-w-0"}`}
             >
-              <div className="pr-2 whitespace-nowrap">
+              {/* Largura padronizada para ambos os filtros */}
+              <div className="pr-2 w-[250px] sm:w-[400px]">
                 <ClassTypeFilter
                   classTypes={classTypes}
                   selectedType={selectedClassType}
@@ -356,8 +360,11 @@ const Index = () => {
               className="gap-2 h-9"
             >
               <Clock className="w-4 h-4 text-primary" />
-              <span className="font-medium">Horários</span>
-              {selectedTime !== "all" && (
+              {/* Texto some quando aberto */}
+              {!isTimeFilterOpen && <span className="font-medium">Horários</span>}
+
+              {/* Badge só aparece se selecionado e fechado */}
+              {selectedTime !== "all" && !isTimeFilterOpen && (
                 <Badge
                   variant="secondary"
                   className="ml-1 h-5 px-1.5 text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
@@ -380,8 +387,7 @@ const Index = () => {
         {/* ================================= */}
 
         <section className="mb-8">
-          {/* Ajustado para 5 colunas em telas muito grandes, ou wrap natural */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
             <KPICard
               label="Total de Alunos"
               value={totalAlunos}
@@ -400,7 +406,6 @@ const Index = () => {
               delay={50}
             />
 
-            {/* [NOVO CARD] Total de Aulas */}
             <KPICard
               label="Total de Aulas"
               value={totalAulas}
@@ -430,7 +435,6 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Lista de Alertas e Botão Ver Tudo */}
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div />
