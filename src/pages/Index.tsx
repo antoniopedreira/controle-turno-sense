@@ -6,7 +6,7 @@ import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardH
 import { KPICard } from "@/components/dashboard/KPICard";
 import { AlertList } from "@/components/dashboard/AlertList";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
-import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
+import { ProfessorRanking, ProfessorStats } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
 import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
 import { TimeFilter } from "@/components/dashboard/TimeFilter";
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { DateRange } from "react-day-picker";
-import type { PerformanceHorario, ProfessorRanking as ProfessorRankingType } from "@/data/mockDashboardData";
+import type { PerformanceHorario } from "@/data/mockDashboardData";
 
 interface PresencaRaw {
   id: string;
@@ -58,7 +58,6 @@ const Index = () => {
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
   const [selectedTime, setSelectedTime] = useState<string>("all");
 
-  // Estado visual dos filtros retráteis
   const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
 
@@ -107,7 +106,6 @@ const Index = () => {
         if (!isWithinInterval(rowDate, { start, end })) return;
       }
 
-      // Normalização de Hora
       const rawHour = row.horario ? row.horario.replace(/h/gi, "").split(":")[0] : "00";
       const normalizedTime = rawHour.padStart(2, "0") + "h";
 
@@ -127,10 +125,8 @@ const Index = () => {
 
     aulasMap.forEach((entry, key) => {
       const { raw, count, alunos, normalizedTime } = entry;
-
       const profsList = raw.professores ? raw.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0) : [];
       const qtdProfs = profsList.length || 1;
-
       const razao = Number((count / qtdProfs).toFixed(2));
 
       let status = "⚪ Analisar";
@@ -178,7 +174,6 @@ const Index = () => {
     return aulasProcessadas;
   }, [rawData, dateRange]);
 
-  // Listas para Filtros
   const availableTimes = useMemo(() => {
     if (!dashboardData) return [];
     const times = new Set<string>();
@@ -210,30 +205,19 @@ const Index = () => {
   const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
   const handleRefresh = () => refetch();
 
-  // FILTRAGEM GLOBAL
   const processedData = useMemo(() => {
     let data = dashboardData || [];
-
-    if (selectedClassType !== "all") {
-      data = data.filter((aula) => aula.tipo_aula === selectedClassType);
-    }
-
-    if (selectedTime !== "all") {
-      data = data.filter((aula) => aula.horario === selectedTime);
-    }
-
+    if (selectedClassType !== "all") data = data.filter((aula) => aula.tipo_aula === selectedClassType);
+    if (selectedTime !== "all") data = data.filter((aula) => aula.horario === selectedTime);
     return data;
   }, [dashboardData, selectedClassType, selectedTime]);
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
 
-  // KPIS
   const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
   const totalHorasPagas = processedData.reduce((acc, aula) => acc + (aula.qtd_professores || 0), 0);
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
-
-  // KPI Total de Aulas
   const totalAulas = processedData.length;
 
   const aulasEmAlerta = processedData
@@ -251,7 +235,6 @@ const Index = () => {
       listaAlunos: aula.lista_alunos,
     }));
 
-  // [NOVO] Cálculo da Porcentagem de Alertas
   const percentAlertas = totalAulas > 0 ? ((aulasEmAlerta.length / totalAulas) * 100).toFixed(0) : 0;
 
   const horarioMap = new Map<string, { total: number; count: number }>();
@@ -270,19 +253,30 @@ const Index = () => {
     }))
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
-  const professorMap = new Map<string, number>();
+  // Ranking Professores (Atualizado)
+  const professorMap = new Map<string, { totalAlunos: number; horasPagas: number }>();
+
   processedData.forEach((aula) => {
     if (!aula.professores) return;
-    const profs = aula.professores.split(",").map((p) => p.trim());
+    const profs = aula.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0);
     profs.forEach((prof) => {
-      if (prof) professorMap.set(prof, (professorMap.get(prof) || 0) + (aula.qtd_alunos || 0));
+      const current = professorMap.get(prof) || { totalAlunos: 0, horasPagas: 0 };
+      professorMap.set(prof, {
+        totalAlunos: current.totalAlunos + (aula.qtd_alunos || 0),
+        horasPagas: current.horasPagas + 1,
+      });
     });
   });
 
-  const professorRanking: ProfessorRankingType[] = Array.from(professorMap.entries())
-    .map(([nome, totalAlunos]) => ({ nome, totalAlunos }))
-    .sort((a, b) => b.totalAlunos - a.totalAlunos)
-    .slice(0, 5);
+  const professorRanking: ProfessorStats[] = Array.from(professorMap.entries())
+    .map(([nome, stats]) => ({
+      nome,
+      totalAlunos: stats.totalAlunos,
+      horasPagas: stats.horasPagas,
+    }))
+    // [MODIFICADO] Ordena por Horas Pagas
+    .sort((a, b) => b.horasPagas - a.horasPagas)
+    .slice(0, 10);
 
   const getMediaStatus = (media: number) => {
     if (isVipFilter) {
@@ -312,9 +306,7 @@ const Index = () => {
           onFilterPeriodChange={setFilterPeriod}
         />
 
-        {/* === ZONA DE FILTROS RETRÁTEIS === */}
         <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
-          {/* 1. Filtro Tipo de Aula */}
           <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
             <Button
               variant={isTypeFilterOpen ? "secondary" : "ghost"}
@@ -324,7 +316,6 @@ const Index = () => {
             >
               <Filter className="w-4 h-4 text-primary" />
               {!isTypeFilterOpen && <span className="font-medium">Tipo de Aula</span>}
-
               {selectedClassType !== "all" && !isTypeFilterOpen && (
                 <Badge
                   variant="secondary"
@@ -334,7 +325,6 @@ const Index = () => {
                 </Badge>
               )}
             </Button>
-
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
             >
@@ -347,10 +337,7 @@ const Index = () => {
               </div>
             </div>
           </div>
-
           <Separator orientation="vertical" className="h-6 hidden sm:block" />
-
-          {/* 2. Filtro Horários */}
           <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
             <Button
               variant={isTimeFilterOpen ? "secondary" : "ghost"}
@@ -360,7 +347,6 @@ const Index = () => {
             >
               <Clock className="w-4 h-4 text-primary" />
               {!isTimeFilterOpen && <span className="font-medium">Horários</span>}
-
               {selectedTime !== "all" && !isTimeFilterOpen && (
                 <Badge
                   variant="secondary"
@@ -370,7 +356,6 @@ const Index = () => {
                 </Badge>
               )}
             </Button>
-
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
             >
@@ -381,7 +366,6 @@ const Index = () => {
           </div>
         </div>
 
-        {/* === KPIS === */}
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
             <KPICard
@@ -392,7 +376,6 @@ const Index = () => {
               subtitle="Alunos no período"
               delay={0}
             />
-
             <KPICard
               label="Horas Pagas"
               value={totalHorasPagas}
@@ -401,7 +384,6 @@ const Index = () => {
               subtitle="Total horas de aula"
               delay={50}
             />
-
             <KPICard
               label="Total de Aulas"
               value={totalAulas}
@@ -410,7 +392,6 @@ const Index = () => {
               subtitle="Turmas realizadas"
               delay={75}
             />
-
             <KPICard
               label="Média Alunos/Professor"
               value={mediaAlunosPorProfessor.toFixed(1)}
@@ -419,20 +400,17 @@ const Index = () => {
               subtitle={getMetaText()}
               delay={100}
             />
-
             <KPICard
               label="Aulas em Alerta"
               value={aulasEmAlerta.length}
               icon={<AlertTriangle className="w-6 h-6" />}
               status={aulasEmAlerta.length > 0 ? "danger" : "success"}
-              // [ATUALIZAÇÃO] Subtítulo com Porcentagem
               subtitle={aulasEmAlerta.length > 0 ? `${percentAlertas}% do total requer atenção` : "Nenhum alerta!"}
               delay={200}
             />
           </div>
         </section>
 
-        {/* === ALERTAS E HISTÓRICO === */}
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div />
@@ -441,7 +419,6 @@ const Index = () => {
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
-        {/* === EVOLUÇÃO DIÁRIA === */}
         <section className="mb-8">
           <DailyEvolutionChart
             data={rawData || []}
@@ -451,7 +428,6 @@ const Index = () => {
           />
         </section>
 
-        {/* === GRÁFICOS FINAIS === */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
