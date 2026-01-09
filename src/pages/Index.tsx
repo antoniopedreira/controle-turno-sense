@@ -8,13 +8,39 @@ import { AlertList } from "@/components/dashboard/AlertList";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
-import { startOfMonth, endOfMonth, format } from "date-fns";
+import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import type {
   AulaAlerta,
   PerformanceHorario,
   ProfessorRanking as ProfessorRankingType,
 } from "@/data/mockDashboardData";
+
+// Interface para os dados brutos do banco
+interface PresencaRaw {
+  id: string;
+  data_aula: string;
+  horario: string;
+  arena: string;
+  tipo_aula: string;
+  professores: string;
+  aluno: string;
+}
+
+// Interface da Aula Agrupada (simulando o que a View fazia)
+interface AulaAgrupada {
+  aula_id: string;
+  data_aula: string;
+  data_iso: string; // Para ordenação
+  horario: string;
+  tipo_aula: string;
+  professores: string;
+  qtd_alunos: number;
+  qtd_professores: number;
+  razao_aluno_prof: number;
+  status_aula: string;
+  cor_indicadora: string;
+}
 
 const Index = () => {
   const today = new Date();
@@ -26,51 +52,150 @@ const Index = () => {
     to: endOfMonth(today),
   });
 
-  // Filtro por tipo de aula
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
 
-  // Buscar dados da view_dashboard_didatico com filtro de data
+  // 1. BUSCA DADOS BRUTOS (SEM FILTRO DE DATA NO SUPABASE PARA GARANTIR)
+  // Trazemos tudo e filtramos no JS para evitar erros de conversão do SQL
   const {
-    data: dashboardData,
+    data: rawData,
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: ["dashboard-data", dateRange?.from, dateRange?.to],
+    queryKey: ["controle_presenca_raw"],
     queryFn: async () => {
-      let query = supabase.from("view_dashboard_didatico").select("*");
-
-      if (dateRange?.from) {
-        const fromDate = format(dateRange.from, "yyyy-MM-dd");
-        query = query.gte("data_iso", fromDate);
-      }
-      if (dateRange?.to) {
-        const toDate = format(dateRange.to, "yyyy-MM-dd");
-        query = query.lte("data_iso", toDate);
-      }
-
-      const { data, error } = await query;
+      // Busca tudo da tabela bruta.
+      // Se ficar muito pesado no futuro, podemos adicionar um filtro .gte('created_at', ...)
+      const { data, error } = await supabase.from("controle_presenca").select("*");
 
       if (error) {
         console.error("Erro ao buscar dados:", error);
         throw error;
       }
-      return data;
+      return data as PresencaRaw[];
     },
   });
 
-  // LOG DE DEBUG: Ajuda a verificar o que chegou do banco
+  // 2. PROCESSAMENTO E AGRUPAMENTO (O CÉREBRO DA OPERAÇÃO)
+  const dashboardData = useMemo(() => {
+    if (!rawData) return [];
+
+    // Map para agrupar alunos em turmas
+    // Chave única: Data + Horario + Arena + Tipo + Professores
+    const aulasMap = new Map<
+      string,
+      {
+        ids: string[];
+        raw: PresencaRaw;
+        count: number;
+      }
+    >();
+
+    // Filtra por data e Agrupa
+    rawData.forEach((row) => {
+      if (!row.data_aula) return;
+
+      // Parse da data texto (ex: "05/01/2026") para Objeto JS
+      // O n8n garante DD/MM/YYYY
+      let rowDate: Date;
+      try {
+        rowDate = parse(row.data_aula, "dd/MM/yyyy", new Date());
+      } catch (e) {
+        console.warn("Data inválida ignorada:", row.data_aula);
+        return;
+      }
+
+      // Aplica o Filtro de Data Selecionado
+      if (dateRange?.from && dateRange?.to) {
+        const start = startOfDay(dateRange.from);
+        const end = endOfDay(dateRange.to);
+        // Verifica se a data da aula está dentro do intervalo
+        if (!isWithinInterval(rowDate, { start, end })) {
+          return;
+        }
+      }
+
+      // Cria a chave única da aula
+      const key = `${row.data_aula}-${row.horario}-${row.arena}-${row.tipo_aula}-${row.professores}`;
+
+      if (!aulasMap.has(key)) {
+        aulasMap.set(key, { ids: [], raw: row, count: 0 });
+      }
+
+      const entry = aulasMap.get(key)!;
+      entry.ids.push(row.id);
+      entry.count += 1;
+    });
+
+    // Transforma o Map em Array de Aulas (Calculando métricas)
+    const aulasProcessadas: AulaAgrupada[] = [];
+
+    aulasMap.forEach((entry, key) => {
+      const { raw, count } = entry;
+
+      // Conta professores (separa por vírgula ou 'e')
+      // Ex: "Rafael, Thieres" -> 2
+      const profsList = raw.professores ? raw.professores.split(/[,e]/).filter((p) => p.trim().length > 0) : [];
+      const qtdProfs = profsList.length || 1; // Mínimo 1 para não dividir por zero
+
+      const razao = Number((count / qtdProfs).toFixed(2));
+
+      // Lógica do Semáforo (Copiada do SQL para JS)
+      let status = "⚪ Analisar";
+      let cor = "#eab308"; // Amarelo padrão
+
+      const isVip = raw.tipo_aula?.toUpperCase().includes("VIP");
+
+      if (isVip) {
+        if (razao < 2) {
+          status = "🔴 Prejuízo";
+          cor = "#ef4444";
+        } else {
+          status = "🟢 Lucrativa";
+          cor = "#22c55e";
+        }
+      } else {
+        if (razao < 3) {
+          status = "🔴 Baixa Adesão";
+          cor = "#ef4444";
+        } else if (razao >= 3 && razao < 5) {
+          status = "🟡 Normal";
+          cor = "#eab308";
+        } else {
+          status = "🟢 Super Lotada";
+          cor = "#22c55e";
+        }
+      }
+
+      aulasProcessadas.push({
+        aula_id: key, // Chave gerada serve como ID
+        data_aula: raw.data_aula,
+        data_iso: parse(raw.data_aula, "dd/MM/yyyy", new Date()).toISOString(),
+        horario: raw.horario,
+        tipo_aula: raw.tipo_aula || "Geral",
+        professores: raw.professores,
+        qtd_alunos: count,
+        qtd_professores: qtdProfs,
+        razao_aluno_prof: razao,
+        status_aula: status,
+        cor_indicadora: cor,
+      });
+    });
+
+    return aulasProcessadas;
+  }, [rawData, dateRange]); // Recalcula sempre que os dados brutos ou a data mudarem
+
+  // LOG DE DEBUG
   useEffect(() => {
     if (dashboardData) {
-      const totalRows = dashboardData.length;
-      const totalSum = dashboardData.reduce((acc, item) => acc + Number(item.qtd_alunos || 0), 0);
-      console.log(`[DEBUG] Linhas recebidas: ${totalRows} | Soma Total Alunos: ${totalSum}`);
-      console.log("Dados brutos:", dashboardData);
+      const totalRows = dashboardData.length; // qtd de aulas
+      const totalAlunos = dashboardData.reduce((acc, aula) => acc + aula.qtd_alunos, 0);
+      console.log(`[DEBUG JS] Aulas Montadas: ${totalRows} | Total Alunos Real: ${totalAlunos}`);
     }
   }, [dashboardData]);
 
-  // Extrair tipos de aula únicos
+  // --- RESTO DA LÓGICA DE UI (Gráficos, KPIs) ---
+
   const classTypes = useMemo(() => {
-    if (!dashboardData) return [];
     const types = new Set<string>();
     dashboardData.forEach((aula) => {
       if (aula.tipo_aula) types.add(aula.tipo_aula);
@@ -78,7 +203,6 @@ const Index = () => {
     return Array.from(types).sort();
   }, [dashboardData]);
 
-  // Função para determinar a cor baseada na meta
   const getColorByMeta = (razao: number, isVip: boolean): "red" | "yellow" | "green" => {
     if (isVip) {
       if (razao > 2) return "green";
@@ -91,53 +215,43 @@ const Index = () => {
     }
   };
 
-  const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
+  const handleRefresh = () => refetch();
 
-  const handleRefresh = () => {
-    refetch();
-  };
-
-  // Processar dados (Correção para filtro Geral/All)
   const processedData = useMemo(() => {
-    const data = dashboardData || [];
-    // Normaliza para garantir que 'Geral' funcione como 'all'
     const filterType = selectedClassType === "Geral" ? "all" : selectedClassType;
-
-    if (filterType === "all") return data;
-    return data.filter((aula) => aula.tipo_aula === filterType);
+    if (filterType === "all") return dashboardData;
+    return dashboardData.filter((aula) => aula.tipo_aula === filterType);
   }, [dashboardData, selectedClassType]);
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
+  const metaValue = isVipFilter ? 2 : 3;
 
-  // --- CORREÇÃO MATEMÁTICA ---
-  // Garante que estamos somando números (Number()) para evitar concatenação de texto
-  const totalAlunos = processedData.reduce((acc, aula) => acc + Number(aula.qtd_alunos || 0), 0);
+  // KPIs
+  const totalAlunos = processedData.reduce((acc, aula) => acc + aula.qtd_alunos, 0);
 
-  // Média de alunos por professor
-  const totalRazao = processedData.reduce((acc, aula) => acc + Number(aula.razao_aluno_prof || 0), 0);
+  const totalRazao = processedData.reduce((acc, aula) => acc + aula.razao_aluno_prof, 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
 
-  // Aulas em alerta
   const aulasEmAlerta: AulaAlerta[] = processedData
     .filter((aula) => aula.status_aula?.includes("🔴"))
     .map((aula) => ({
-      id: aula.aula_id || "",
-      data: aula.data_aula || "",
-      horario: aula.horario || "",
-      professores: aula.professores || "",
-      qtdAlunos: Number(aula.qtd_alunos || 0),
-      status: aula.status_aula || "",
+      id: aula.aula_id,
+      data: aula.data_aula,
+      horario: aula.horario,
+      professores: aula.professores,
+      qtdAlunos: aula.qtd_alunos,
+      status: aula.status_aula,
       corIndicadora: (aula.cor_indicadora as "red" | "yellow" | "green") || "red",
     }));
 
-  // Performance por horário
+  // Gráfico Horário
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
     const hora = aula.horario.split(":")[0].padStart(2, "0") + "h";
     const existing = horarioMap.get(hora) || { total: 0, count: 0 };
     horarioMap.set(hora, {
-      total: existing.total + Number(aula.razao_aluno_prof || 0),
+      total: existing.total + aula.razao_aluno_prof,
       count: existing.count + 1,
     });
   });
@@ -153,14 +267,14 @@ const Index = () => {
     })
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
-  // Ranking de professores
+  // Ranking Professores
   const professorMap = new Map<string, number>();
   processedData.forEach((aula) => {
     if (!aula.professores) return;
-    const profs = aula.professores.split(",").map((p) => p.trim());
+    const profs = aula.professores.split(/[,e]/).map((p) => p.trim());
     profs.forEach((prof) => {
       if (prof) {
-        professorMap.set(prof, (professorMap.get(prof) || 0) + Number(aula.qtd_alunos || 0));
+        professorMap.set(prof, (professorMap.get(prof) || 0) + aula.qtd_alunos);
       }
     });
   });
