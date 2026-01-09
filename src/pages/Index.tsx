@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Users, UserCheck, AlertTriangle, Clock } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { AlertList } from "@/components/dashboard/AlertList";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
+import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart"; // [NOVO IMPORT]
 import { startOfMonth, endOfMonth, format, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import type {
@@ -25,7 +26,7 @@ interface PresencaRaw {
   tipo_aula: string;
   professores: string;
   aluno: string;
-  coordenador: string; // Adicionado
+  coordenador: string;
 }
 
 // Interface expandida para passar os detalhes
@@ -41,8 +42,8 @@ export interface AulaAgrupada {
   razao_aluno_prof: number;
   status_aula: string;
   cor_indicadora: string;
-  coordenador: string; // Novo campo
-  lista_alunos: string[]; // Novo campo
+  coordenador: string;
+  lista_alunos: string[];
 }
 
 const Index = () => {
@@ -162,15 +163,14 @@ const Index = () => {
         razao_aluno_prof: razao,
         status_aula: status,
         cor_indicadora: cor,
-        coordenador: raw.coordenador || "Não informado", // Passa o coordenador
-        lista_alunos: alunos, // Passa a lista completa
+        coordenador: raw.coordenador || "Não informado",
+        lista_alunos: alunos,
       });
     });
 
     return aulasProcessadas;
   }, [rawData, dateRange]);
 
-  // ... (Hooks de classTypes, getColorByMeta, etc. mantidos iguais) ...
   const classTypes = useMemo(() => {
     if (!dashboardData) return [];
     const types = new Set<string>();
@@ -208,7 +208,6 @@ const Index = () => {
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
 
-  // MAPEAMENTO ATUALIZADO PARA PASSAR OS NOVOS CAMPOS
   const aulasEmAlerta = processedData
     .filter((aula) => aula.status_aula?.includes("🔴"))
     .map((aula) => ({
@@ -219,13 +218,10 @@ const Index = () => {
       qtdAlunos: aula.qtd_alunos,
       status: aula.status_aula,
       corIndicadora: aula.cor_indicadora as "red" | "yellow" | "green",
-      // Campos extras passados (mesmo que a interface AulaAlerta original reclame, vamos estendê-la no componente filho ou usar 'as any' aqui se necessário, mas o ideal é atualizar o tipo AulaAlerta)
       tipo: aula.tipo_aula,
       coordenador: aula.coordenador,
       listaAlunos: aula.lista_alunos,
     }));
-
-  // ... (Restante do código de gráficos e renderização mantido igual) ...
 
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
@@ -327,10 +323,17 @@ const Index = () => {
             />
           </div>
         </section>
+
+        {/* Lista de Alertas */}
         <section className="mb-8">
-          {/* Aqui passamos os dados enriquecidos (usando 'as any' para compatibilidade rápida se o tipo não for atualizado globalmente) */}
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
+
+        {/* [NOVO] Gráfico de Evolução Diária (Abaixo da AlertList) */}
+        <section className="mb-8">
+          <DailyEvolutionChart data={rawData || []} isLoading={isLoading} />
+        </section>
+
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
