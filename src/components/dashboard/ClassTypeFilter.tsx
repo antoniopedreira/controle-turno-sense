@@ -1,6 +1,5 @@
-import { Filter } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Button } from "@/components/ui/button";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 interface ClassTypeFilterProps {
   classTypes: string[];
@@ -10,40 +9,30 @@ interface ClassTypeFilterProps {
 
 export function ClassTypeFilter({ classTypes, selectedType, onTypeChange }: ClassTypeFilterProps) {
   return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Filter className="w-4 h-4" />
-        <span className="text-sm font-medium">Tipo de Aula:</span>
-      </div>
-      
-      <div className="flex gap-2 flex-wrap">
+    <ScrollArea className="w-full whitespace-nowrap rounded-md bg-transparent">
+      <div className="flex w-max space-x-2 p-1">
         <Button
-          variant={selectedType === 'all' ? 'default' : 'outline'}
+          variant={selectedType === "all" ? "secondary" : "ghost"}
           size="sm"
-          onClick={() => onTypeChange('all')}
-          className={cn(
-            'transition-all duration-200',
-            selectedType === 'all' && 'shadow-lg shadow-primary/20'
-          )}
+          onClick={() => onTypeChange("all")}
+          className="rounded-full h-7 text-xs font-medium"
         >
-          Geral
+          Todos
         </Button>
-        
+
         {classTypes.map((type) => (
           <Button
             key={type}
-            variant={selectedType === type ? 'default' : 'outline'}
+            variant={selectedType === type ? "secondary" : "ghost"}
             size="sm"
             onClick={() => onTypeChange(type)}
-            className={cn(
-              'transition-all duration-200',
-              selectedType === type && 'shadow-lg shadow-primary/20'
-            )}
+            className="rounded-full h-7 text-xs font-medium"
           >
             {type}
           </Button>
         ))}
       </div>
-    </div>
+      <ScrollBar orientation="horizontal" className="h-2" />
+    </ScrollArea>
   );
 }

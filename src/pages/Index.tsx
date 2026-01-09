@@ -309,7 +309,7 @@ const Index = () => {
           onFilterPeriodChange={setFilterPeriod}
         />
 
-        {/* === ZONA DE FILTROS RETRÁTEIS === */}
+        {/* === ZONA DE FILTROS RETRÁTEIS (CORRIGIDO) === */}
         <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
           {/* 1. Filtro Tipo de Aula */}
           <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
@@ -320,10 +320,9 @@ const Index = () => {
               className="gap-2 h-9"
             >
               <Filter className="w-4 h-4 text-primary" />
-              {/* Texto some quando aberto */}
+              {/* Nome só aparece se fechado */}
               {!isTypeFilterOpen && <span className="font-medium">Tipo de Aula</span>}
 
-              {/* Badge só aparece se selecionado e fechado */}
               {selectedClassType !== "all" && !isTypeFilterOpen && (
                 <Badge
                   variant="secondary"
@@ -336,10 +335,11 @@ const Index = () => {
 
             {/* Conteúdo Retrátil */}
             <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "w-auto opacity-100 max-w-[500px]" : "w-0 opacity-0 max-w-0"}`}
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "w-[280px] opacity-100" : "w-0 opacity-0"}`}
             >
-              {/* Largura padronizada para ambos os filtros */}
-              <div className="pr-2 w-[250px] sm:w-[400px]">
+              <div className="w-[280px]">
+                {" "}
+                {/* Largura Fixa Forçada */}
                 <ClassTypeFilter
                   classTypes={classTypes}
                   selectedType={selectedClassType}
@@ -360,10 +360,9 @@ const Index = () => {
               className="gap-2 h-9"
             >
               <Clock className="w-4 h-4 text-primary" />
-              {/* Texto some quando aberto */}
+              {/* Nome só aparece se fechado */}
               {!isTimeFilterOpen && <span className="font-medium">Horários</span>}
 
-              {/* Badge só aparece se selecionado e fechado */}
               {selectedTime !== "all" && !isTimeFilterOpen && (
                 <Badge
                   variant="secondary"
@@ -376,9 +375,11 @@ const Index = () => {
 
             {/* Conteúdo Retrátil */}
             <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "w-auto opacity-100 max-w-[500px]" : "w-0 opacity-0 max-w-0"}`}
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "w-[280px] opacity-100" : "w-0 opacity-0"}`}
             >
-              <div className="pr-2 w-[250px] sm:w-[400px]">
+              <div className="w-[280px]">
+                {" "}
+                {/* Largura Fixa Forçada Igual */}
                 <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
               </div>
             </div>
