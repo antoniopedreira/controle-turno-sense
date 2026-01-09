@@ -320,7 +320,6 @@ const Index = () => {
               className="gap-2 h-9"
             >
               <Filter className="w-4 h-4 text-primary" />
-              {/* Nome só aparece se fechado */}
               {!isTypeFilterOpen && <span className="font-medium">Tipo de Aula</span>}
 
               {selectedClassType !== "all" && !isTypeFilterOpen && (
@@ -333,16 +332,10 @@ const Index = () => {
               )}
             </Button>
 
-            {/* Conteúdo Retrátil:
-              - max-w-[800px] permite expandir até esse tamanho (cobre telas normais)
-              - se a tela acabar antes, o ScrollArea dentro cuidará do scroll
-            */}
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
             >
               <div className="min-w-0 max-w-[85vw] md:max-w-lg">
-                {" "}
-                {/* Limite responsivo */}
                 <ClassTypeFilter
                   classTypes={classTypes}
                   selectedType={selectedClassType}
@@ -363,7 +356,6 @@ const Index = () => {
               className="gap-2 h-9"
             >
               <Clock className="w-4 h-4 text-primary" />
-              {/* Nome só aparece se fechado */}
               {!isTimeFilterOpen && <span className="font-medium">Horários</span>}
 
               {selectedTime !== "all" && !isTimeFilterOpen && (
@@ -376,7 +368,6 @@ const Index = () => {
               )}
             </Button>
 
-            {/* Conteúdo Retrátil */}
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
             >
@@ -386,8 +377,8 @@ const Index = () => {
             </div>
           </div>
         </div>
-        {/* ================================= */}
 
+        {/* === KPIS === */}
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
             <KPICard
@@ -437,14 +428,17 @@ const Index = () => {
           </div>
         </section>
 
+        {/* === ALERTAS E HISTÓRICO === */}
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div />
-            <FullHistoryDialog aulas={processedData} />
+            {/* Atualização: Passando dateRange para o modal */}
+            <FullHistoryDialog aulas={processedData} dateRange={dateRange} />
           </div>
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
+        {/* === EVOLUÇÃO DIÁRIA === */}
         <section className="mb-8">
           <DailyEvolutionChart
             data={rawData || []}
@@ -454,6 +448,7 @@ const Index = () => {
           />
         </section>
 
+        {/* === GRÁFICOS FINAIS === */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
