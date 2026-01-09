@@ -238,7 +238,12 @@ const Index = () => {
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
-    const hora = aula.horario.split(":")[0].padStart(2, "0") + "h";
+
+    // [CORREÇÃO] Remove 'h' se existir e garante formatação correta (05h)
+    // Se vier "5:00" -> "05h". Se vier "05h" -> "05h".
+    const rawHour = aula.horario.replace(/h/gi, "").split(":")[0];
+    const hora = rawHour.padStart(2, "0") + "h";
+
     const existing = horarioMap.get(hora) || { total: 0, count: 0 };
     horarioMap.set(hora, { total: existing.total + (aula.razao_aluno_prof || 0), count: existing.count + 1 });
   });
@@ -345,8 +350,7 @@ const Index = () => {
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
-        {/* GRÁFICO DE EVOLUÇÃO DIÁRIA (NOVO) */}
-        {/* Passamos rawData completo e o filtro de tipo selecionado */}
+        {/* GRÁFICO DE EVOLUÇÃO DIÁRIA */}
         <section className="mb-8">
           <DailyEvolutionChart data={rawData || []} isLoading={isLoading} classType={selectedClassType} />
         </section>
