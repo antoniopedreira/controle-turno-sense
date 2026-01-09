@@ -16,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Calendar,
-  Clock,
   Users,
   Search,
   ChevronRight,
@@ -26,7 +25,11 @@ import {
   AlertTriangle,
   History,
   User,
+  CalendarDays,
 } from "lucide-react";
+import { DateRange } from "react-day-picker"; // Import necessário
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface AulaFull {
   aula_id: string;
@@ -43,9 +46,10 @@ interface AulaFull {
 
 interface FullHistoryDialogProps {
   aulas: any[];
+  dateRange?: DateRange; // Nova prop para receber o período
 }
 
-export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
+export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedAula, setSelectedAula] = useState<AulaFull | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -69,19 +73,40 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
-  // --- LÓGICA DA ABA ALUNOS (NOVO) ---
-  const sortedUniqueStudents = useMemo(() => {
-    const allStudents = new Set<string>();
+  // --- LÓGICA DA ABA ALUNOS (Com contagem de frequência) ---
+  const studentStats = useMemo(() => {
+    // Mapa para contar presenças: "Nome" -> Quantidade
+    const stats = new Map<string, number>();
+
     aulas.forEach((aula) => {
       if (aula.lista_alunos && Array.isArray(aula.lista_alunos)) {
-        aula.lista_alunos.forEach((aluno: string) => allStudents.add(aluno));
+        aula.lista_alunos.forEach((aluno: string) => {
+          const current = stats.get(aluno) || 0;
+          stats.set(aluno, current + 1);
+        });
       }
     });
-    // Filtra pelo termo de busca também na aba de alunos
-    return Array.from(allStudents)
-      .filter((nome) => nome.toLowerCase().includes(searchTerm.toLowerCase()))
-      .sort((a, b) => a.localeCompare(b));
+
+    // Converte para array, filtra e ordena alfabeticamente
+    return Array.from(stats.entries())
+      .map(([name, count]) => ({ name, count }))
+      .filter((item) => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [aulas, searchTerm]);
+
+  // --- LÓGICA DO CABEÇALHO ---
+  const formatPeriodo = () => {
+    if (!dateRange?.from) return "Todo o Período";
+    if (!dateRange.to || dateRange.from.getTime() === dateRange.to.getTime()) {
+      return format(dateRange.from, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    }
+    return `${format(dateRange.from, "dd/MM/yyyy")} até ${format(dateRange.to, "dd/MM/yyyy")}`;
+  };
+
+  const diasComAula = useMemo(() => {
+    const diasUnicos = new Set(aulas.map((a) => a.data_aula));
+    return diasUnicos.size;
+  }, [aulas]);
 
   // Resetar estados ao fechar
   const handleOpenChange = (open: boolean) => {
@@ -118,16 +143,24 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
                   Voltar para Lista
                 </Button>
               ) : (
-                <div className="flex items-center gap-2">
-                  <History className="w-5 h-5 text-primary" />
-                  <span>Visão Geral do Período</span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <History className="w-5 h-5 text-primary" />
+                    <span>Visão Geral: {formatPeriodo()}</span>
+                  </div>
                 </div>
               )}
             </DialogTitle>
             <DialogDescription>
-              {selectedAula
-                ? "Detalhes completos do turno selecionado."
-                : "Acompanhe todas as aulas realizadas e a lista de presença."}
+              {selectedAula ? (
+                "Detalhes completos do turno selecionado."
+              ) : (
+                <span className="flex items-center gap-2">
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  Foram realizadas <strong>{aulas.length} aulas</strong> em <strong>{diasComAula} dias</strong> de
+                  atividade.
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -141,7 +174,7 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
                   </TabsTrigger>
                   <TabsTrigger value="alunos" className="gap-2">
                     <Users className="w-4 h-4" />
-                    Alunos ({sortedUniqueStudents.length})
+                    Alunos ({studentStats.length})
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -204,7 +237,7 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
                 </div>
               </div>
 
-              {/* Lista de Alunos (Flexível para ocupar o resto da altura) */}
+              {/* Lista de Alunos (Visão Detalhada da Aula) */}
               <div className="flex-1 flex flex-col bg-background rounded-lg border shadow-sm overflow-hidden">
                 <div className="p-4 border-b flex justify-between items-center bg-muted/10">
                   <div className="flex items-center gap-2 font-semibold">
@@ -239,7 +272,7 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
               </div>
             </div>
           ) : (
-            // === CONTEÚDO DAS ABAS ===
+            // === CONTEÚDO DAS ABAS (PRINCIPAL) ===
             <div className="h-full p-6 pt-2">
               <Tabs value={activeTab} className="h-full flex flex-col">
                 {/* TAB 1: LISTA DE AULAS */}
@@ -321,23 +354,31 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
                   )}
                 </TabsContent>
 
-                {/* TAB 2: LISTA DE ALUNOS */}
+                {/* TAB 2: LISTA DE ALUNOS (ATUALIZADA) */}
                 <TabsContent value="alunos" className="h-full mt-0 animate-in fade-in-50">
                   <div className="h-full border rounded-md bg-background shadow-sm overflow-hidden flex flex-col">
                     <div className="p-3 border-b bg-muted/10 text-xs font-medium text-muted-foreground flex justify-between">
                       <span>NOME DO ALUNO</span>
-                      <span>TOTAL: {sortedUniqueStudents.length}</span>
+                      <span>TOTAL ALUNOS: {studentStats.length}</span>
                     </div>
 
                     <ScrollArea className="flex-1">
-                      {sortedUniqueStudents.length > 0 ? (
+                      {studentStats.length > 0 ? (
                         <div className="divide-y">
-                          {sortedUniqueStudents.map((aluno, idx) => (
-                            <div key={idx} className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors">
-                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                <User className="w-4 h-4" />
+                          {studentStats.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                  <User className="w-4 h-4" />
+                                </div>
+                                <span className="text-sm font-medium">{item.name}</span>
                               </div>
-                              <span className="text-sm font-medium">{aluno}</span>
+                              <Badge variant="secondary" className="font-normal text-xs">
+                                {item.count} {item.count === 1 ? "aula" : "aulas"}
+                              </Badge>
                             </div>
                           ))}
                         </div>
