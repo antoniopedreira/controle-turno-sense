@@ -55,13 +55,18 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
   const [currentPage, setCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState("aulas");
 
-  // --- LÓGICA DA ABA AULAS ---
-  const filteredAulas = aulas.filter(
-    (aula) =>
-      aula.professores.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      aula.tipo_aula.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      aula.horario.includes(searchTerm),
-  );
+  // --- LÓGICA DE FILTRO SEGURA ---
+  const filteredAulas = useMemo(() => {
+    return aulas.filter((aula) => {
+      const termo = searchTerm.toLowerCase();
+      // Verificações de segurança para evitar erro em null/undefined
+      const profs = aula.professores ? String(aula.professores).toLowerCase() : "";
+      const tipo = aula.tipo_aula ? String(aula.tipo_aula).toLowerCase() : "";
+      const hora = aula.horario ? String(aula.horario).toLowerCase() : "";
+
+      return profs.includes(termo) || tipo.includes(termo) || hora.includes(termo);
+    });
+  }, [aulas, searchTerm]);
 
   const itemsPerPage = 8;
   const totalPages = Math.ceil(filteredAulas.length / itemsPerPage);
@@ -91,7 +96,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [aulas, searchTerm]);
 
-  // --- LÓGICA DO CABEÇALHO ---
   const formatPeriodo = () => {
     if (!dateRange?.from) return "Todo o Período";
     if (!dateRange.to || dateRange.from.getTime() === dateRange.to.getTime()) {
@@ -124,7 +128,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
       </DialogTrigger>
 
       <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
-        {/* HEADER FIXO */}
         <div className="p-6 pb-4 border-b bg-background z-10">
           <DialogHeader className="mb-4">
             <DialogTitle className="flex items-center gap-2 text-xl">
@@ -166,7 +169,7 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                 <TabsList>
                   <TabsTrigger value="aulas" className="gap-2">
                     <Calendar className="w-4 h-4" />
-                    Aulas ({aulas.length})
+                    Aulas ({filteredAulas.length}) {/* Mostra qtd filtrada */}
                   </TabsTrigger>
                   <TabsTrigger value="alunos" className="gap-2">
                     <Users className="w-4 h-4" />
@@ -191,10 +194,8 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
           )}
         </div>
 
-        {/* CONTEÚDO SCROLLÁVEL */}
         <div className="flex-1 overflow-hidden bg-muted/5 relative">
           {selectedAula ? (
-            // === VISÃO DETALHADA DA AULA ===
             <div className="h-full flex flex-col p-6 animate-in slide-in-from-right-10 duration-200">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 shrink-0">
                 <div className="p-4 bg-background rounded-lg border shadow-sm space-y-3">
@@ -266,7 +267,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
               </div>
             </div>
           ) : (
-            // === CONTEÚDO DAS ABAS (LISTA) ===
             <div className="h-full p-6 pt-2">
               <Tabs value={activeTab} className="h-full flex flex-col">
                 <TabsContent value="aulas" className="h-full mt-0 flex flex-col gap-4 animate-in fade-in-50">
@@ -278,7 +278,7 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                             <TableHead className="w-[60px]">Hora</TableHead>
                             <TableHead className="w-[80px]">Data</TableHead>
                             <TableHead className="w-[100px]">Tipo</TableHead>
-                            <TableHead className="w-[120px]">Status</TableHead> {/* Nova Coluna */}
+                            <TableHead className="w-[120px]">Status</TableHead>
                             <TableHead>Professores</TableHead>
                             <TableHead className="text-right">Qtd</TableHead>
                             <TableHead className="w-[40px]"></TableHead>
@@ -301,7 +301,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                                     {aula.tipo_aula}
                                   </Badge>
                                 </TableCell>
-                                {/* Célula do Status com Badge Colorida */}
                                 <TableCell>
                                   <Badge
                                     variant="outline"
