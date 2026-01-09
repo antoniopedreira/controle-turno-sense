@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,7 +26,7 @@ import {
   User,
   CalendarDays,
 } from "lucide-react";
-import { DateRange } from "react-day-picker"; // Import necessário
+import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -46,7 +45,7 @@ interface AulaFull {
 
 interface FullHistoryDialogProps {
   aulas: any[];
-  dateRange?: DateRange; // Nova prop para receber o período
+  dateRange?: DateRange;
 }
 
 export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) {
@@ -73,9 +72,8 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
-  // --- LÓGICA DA ABA ALUNOS (Com contagem de frequência) ---
+  // --- LÓGICA DA ABA ALUNOS ---
   const studentStats = useMemo(() => {
-    // Mapa para contar presenças: "Nome" -> Quantidade
     const stats = new Map<string, number>();
 
     aulas.forEach((aula) => {
@@ -87,7 +85,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
       }
     });
 
-    // Converte para array, filtra e ordena alfabeticamente
     return Array.from(stats.entries())
       .map(([name, count]) => ({ name, count }))
       .filter((item) => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -108,7 +105,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
     return diasUnicos.size;
   }, [aulas]);
 
-  // Resetar estados ao fechar
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (!open) {
@@ -200,7 +196,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
           {selectedAula ? (
             // === VISÃO DETALHADA DA AULA ===
             <div className="h-full flex flex-col p-6 animate-in slide-in-from-right-10 duration-200">
-              {/* Cards de Topo */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 shrink-0">
                 <div className="p-4 bg-background rounded-lg border shadow-sm space-y-3">
                   <div className="flex items-center gap-2 text-muted-foreground">
@@ -237,7 +232,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                 </div>
               </div>
 
-              {/* Lista de Alunos (Visão Detalhada da Aula) */}
               <div className="flex-1 flex flex-col bg-background rounded-lg border shadow-sm overflow-hidden">
                 <div className="p-4 border-b flex justify-between items-center bg-muted/10">
                   <div className="flex items-center gap-2 font-semibold">
@@ -272,19 +266,19 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
               </div>
             </div>
           ) : (
-            // === CONTEÚDO DAS ABAS (PRINCIPAL) ===
+            // === CONTEÚDO DAS ABAS (LISTA) ===
             <div className="h-full p-6 pt-2">
               <Tabs value={activeTab} className="h-full flex flex-col">
-                {/* TAB 1: LISTA DE AULAS */}
                 <TabsContent value="aulas" className="h-full mt-0 flex flex-col gap-4 animate-in fade-in-50">
                   <div className="border rounded-md bg-background flex-1 overflow-hidden shadow-sm">
                     <ScrollArea className="h-full">
                       <Table>
                         <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur-sm z-10">
                           <TableRow>
-                            <TableHead className="w-[80px]">Hora</TableHead>
-                            <TableHead className="w-[100px]">Data</TableHead>
-                            <TableHead>Tipo</TableHead>
+                            <TableHead className="w-[60px]">Hora</TableHead>
+                            <TableHead className="w-[80px]">Data</TableHead>
+                            <TableHead className="w-[100px]">Tipo</TableHead>
+                            <TableHead className="w-[120px]">Status</TableHead> {/* Nova Coluna */}
                             <TableHead>Professores</TableHead>
                             <TableHead className="text-right">Qtd</TableHead>
                             <TableHead className="w-[40px]"></TableHead>
@@ -307,7 +301,21 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                                     {aula.tipo_aula}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="text-sm max-w-[200px] truncate text-muted-foreground">
+                                {/* Célula do Status com Badge Colorida */}
+                                <TableCell>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] whitespace-nowrap px-2 py-0.5 border"
+                                    style={{
+                                      borderColor: aula.cor_indicadora,
+                                      color: aula.cor_indicadora,
+                                      backgroundColor: `${aula.cor_indicadora}10`,
+                                    }}
+                                  >
+                                    {aula.status_aula}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-sm max-w-[180px] truncate text-muted-foreground">
                                   {aula.professores}
                                 </TableCell>
                                 <TableCell className="text-right font-bold text-sm">{aula.qtd_alunos}</TableCell>
@@ -318,7 +326,7 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                             ))
                           ) : (
                             <TableRow>
-                              <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                              <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                                 Nenhuma aula encontrada para o filtro.
                               </TableCell>
                             </TableRow>
@@ -328,7 +336,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                     </ScrollArea>
                   </div>
 
-                  {/* Paginação */}
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between shrink-0 bg-background p-2 rounded-lg border">
                       <Button
@@ -354,7 +361,6 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                   )}
                 </TabsContent>
 
-                {/* TAB 2: LISTA DE ALUNOS (ATUALIZADA) */}
                 <TabsContent value="alunos" className="h-full mt-0 animate-in fade-in-50">
                   <div className="h-full border rounded-md bg-background shadow-sm overflow-hidden flex flex-col">
                     <div className="p-3 border-b bg-muted/10 text-xs font-medium text-muted-foreground flex justify-between">
