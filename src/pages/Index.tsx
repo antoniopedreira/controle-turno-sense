@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar, History } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardHeader";
@@ -309,7 +309,7 @@ const Index = () => {
           onFilterPeriodChange={setFilterPeriod}
         />
 
-        {/* === ZONA DE FILTROS RETRÁTEIS (CORRIGIDO) === */}
+        {/* === ZONA DE FILTROS RETRÁTEIS === */}
         <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
           {/* 1. Filtro Tipo de Aula */}
           <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
@@ -333,13 +333,16 @@ const Index = () => {
               )}
             </Button>
 
-            {/* Conteúdo Retrátil */}
+            {/* Conteúdo Retrátil:
+              - max-w-[800px] permite expandir até esse tamanho (cobre telas normais)
+              - se a tela acabar antes, o ScrollArea dentro cuidará do scroll
+            */}
             <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "w-[280px] opacity-100" : "w-0 opacity-0"}`}
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
             >
-              <div className="w-[280px]">
+              <div className="min-w-0 max-w-[85vw] md:max-w-lg">
                 {" "}
-                {/* Largura Fixa Forçada */}
+                {/* Limite responsivo */}
                 <ClassTypeFilter
                   classTypes={classTypes}
                   selectedType={selectedClassType}
@@ -375,11 +378,9 @@ const Index = () => {
 
             {/* Conteúdo Retrátil */}
             <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "w-[280px] opacity-100" : "w-0 opacity-0"}`}
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
             >
-              <div className="w-[280px]">
-                {" "}
-                {/* Largura Fixa Forçada Igual */}
+              <div className="min-w-0 max-w-[85vw] md:max-w-lg">
                 <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
               </div>
             </div>
