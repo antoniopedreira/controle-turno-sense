@@ -214,7 +214,19 @@ const Index = () => {
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
 
-  const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
+  // KPIS
+  // [MODIFICAÇÃO] Cálculo de Alunos Únicos
+  const uniqueStudentsSet = new Set<string>();
+  processedData.forEach((aula) => {
+    if (aula.lista_alunos && Array.isArray(aula.lista_alunos)) {
+      aula.lista_alunos.forEach((aluno) => uniqueStudentsSet.add(aluno));
+    }
+  });
+  const totalAlunosUnicos = uniqueStudentsSet.size;
+
+  // Mantemos o total de presenças apenas para o subtítulo ou referência
+  const totalPresencas = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
+
   const totalHorasPagas = processedData.reduce((acc, aula) => acc + (aula.qtd_professores || 0), 0);
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
@@ -253,15 +265,19 @@ const Index = () => {
     }))
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
-  // Ranking Professores (Atualizado)
+  // Ranking Professores (Com Normalização de Nomes)
   const professorMap = new Map<string, { totalAlunos: number; horasPagas: number }>();
 
   processedData.forEach((aula) => {
     if (!aula.professores) return;
     const profs = aula.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0);
     profs.forEach((prof) => {
-      const current = professorMap.get(prof) || { totalAlunos: 0, horasPagas: 0 };
-      professorMap.set(prof, {
+      // Normalização Opcional (se já não tiver rodado no SQL)
+      let nomeTratado = prof.trim();
+      if (nomeTratado === "Peu") nomeTratado = "Peu Beck";
+
+      const current = professorMap.get(nomeTratado) || { totalAlunos: 0, horasPagas: 0 };
+      professorMap.set(nomeTratado, {
         totalAlunos: current.totalAlunos + (aula.qtd_alunos || 0),
         horasPagas: current.horasPagas + 1,
       });
@@ -274,7 +290,6 @@ const Index = () => {
       totalAlunos: stats.totalAlunos,
       horasPagas: stats.horasPagas,
     }))
-    // [MODIFICADO] Ordena por Horas Pagas
     .sort((a, b) => b.horasPagas - a.horasPagas)
     .slice(0, 10);
 
@@ -368,14 +383,16 @@ const Index = () => {
 
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
+            {/* KPI ATUALIZADO: Alunos Únicos */}
             <KPICard
               label="Total de Alunos"
-              value={totalAlunos}
+              value={totalAlunosUnicos}
               icon={<Users className="w-6 h-6" />}
               status="neutral"
-              subtitle="Alunos no período"
+              subtitle={`Alunos únicos (${totalPresencas} presenças)`}
               delay={0}
             />
+
             <KPICard
               label="Horas Pagas"
               value={totalHorasPagas}
