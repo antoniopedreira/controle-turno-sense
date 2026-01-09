@@ -9,15 +9,11 @@ import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
 import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
+import { TimeFilter } from "@/components/dashboard/TimeFilter"; // [NOVO IMPORT]
 import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import type {
-  AulaAlerta,
-  PerformanceHorario,
-  ProfessorRanking as ProfessorRankingType,
-} from "@/data/mockDashboardData";
+import type { PerformanceHorario, ProfessorRanking as ProfessorRankingType } from "@/data/mockDashboardData";
 
-// Interface ajustada para incluir dados brutos necessários
 interface PresencaRaw {
   id: string;
   data_aula: string;
@@ -29,7 +25,6 @@ interface PresencaRaw {
   coordenador: string;
 }
 
-// Interface expandida para passar os detalhes
 export interface AulaAgrupada {
   aula_id: string;
   data_aula: string;
@@ -49,17 +44,17 @@ export interface AulaAgrupada {
 const Index = () => {
   const today = new Date();
 
-  // Filtro de data global da página
+  // Filtros
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("month");
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(today),
     to: endOfMonth(today),
   });
 
-  // Filtro de Tipo de Aula (VIP, Geral, etc)
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
+  const [selectedTime, setSelectedTime] = useState<string>("all"); // [NOVO] Estado do Horário
 
-  // 1. BUSCA DADOS BRUTOS DO SUPABASE
+  // Busca dados
   const {
     data: rawData,
     isLoading,
@@ -73,7 +68,7 @@ const Index = () => {
     },
   });
 
-  // 2. PROCESSAMENTO E AGRUPAMENTO DOS DADOS (PRINCIPAL)
+  // Processamento Mestre
   const dashboardData = useMemo(() => {
     if (!rawData) return [];
 
@@ -84,6 +79,7 @@ const Index = () => {
         raw: PresencaRaw;
         count: number;
         alunos: string[];
+        normalizedTime: string; // Guarda a hora normalizada
       }
     >();
 
@@ -97,20 +93,20 @@ const Index = () => {
         return;
       }
 
-      // Aplica o filtro de data global
       if (dateRange?.from && dateRange?.to) {
         const start = startOfDay(dateRange.from);
         const end = endOfDay(dateRange.to);
-        if (!isWithinInterval(rowDate, { start, end })) {
-          return;
-        }
+        if (!isWithinInterval(rowDate, { start, end })) return;
       }
 
-      // Chave única para agrupar alunos na mesma turma
-      const key = `${row.data_aula}-${row.horario}-${row.arena}-${row.tipo_aula}-${row.professores}`;
+      // [NORMALIZAÇÃO DE HORA] Garante "05h", "06h"
+      const rawHour = row.horario ? row.horario.replace(/h/gi, "").split(":")[0] : "00";
+      const normalizedTime = rawHour.padStart(2, "0") + "h";
+
+      const key = `${row.data_aula}-${normalizedTime}-${row.arena}-${row.tipo_aula}-${row.professores}`;
 
       if (!aulasMap.has(key)) {
-        aulasMap.set(key, { ids: [], raw: row, count: 0, alunos: [] });
+        aulasMap.set(key, { ids: [], raw: row, count: 0, alunos: [], normalizedTime });
       }
 
       const entry = aulasMap.get(key)!;
@@ -122,9 +118,8 @@ const Index = () => {
     const aulasProcessadas: AulaAgrupada[] = [];
 
     aulasMap.forEach((entry, key) => {
-      const { raw, count, alunos } = entry;
+      const { raw, count, alunos, normalizedTime } = entry;
 
-      // Conta professores (separados por vírgula ou ' e ')
       const profsList = raw.professores ? raw.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0) : [];
       const qtdProfs = profsList.length || 1;
 
@@ -132,10 +127,8 @@ const Index = () => {
 
       let status = "⚪ Analisar";
       let cor = "#eab308";
-
       const isVip = raw.tipo_aula?.toUpperCase().includes("VIP");
 
-      // Regra de Cores (Semáforo)
       if (isVip) {
         if (razao < 2) {
           status = "🔴 Prejuízo";
@@ -161,7 +154,7 @@ const Index = () => {
         aula_id: key,
         data_aula: raw.data_aula,
         data_iso: parse(raw.data_aula, "dd/MM/yyyy", new Date()).toISOString(),
-        horario: raw.horario,
+        horario: normalizedTime, // Usa a hora limpa
         tipo_aula: raw.tipo_aula || "Geral",
         professores: raw.professores,
         qtd_alunos: count,
@@ -177,7 +170,15 @@ const Index = () => {
     return aulasProcessadas;
   }, [rawData, dateRange]);
 
-  // Lista de tipos de aula para o filtro
+  // Lista de Horários Disponíveis (para o filtro)
+  const availableTimes = useMemo(() => {
+    if (!dashboardData) return [];
+    const times = new Set<string>();
+    dashboardData.forEach((aula) => times.add(aula.horario));
+    // Ordena numéricamente "05h" < "06h"
+    return Array.from(times).sort();
+  }, [dashboardData]);
+
   const classTypes = useMemo(() => {
     if (!dashboardData) return [];
     const types = new Set<string>();
@@ -187,7 +188,6 @@ const Index = () => {
     return Array.from(types).sort();
   }, [dashboardData]);
 
-  // Função auxiliar de cores para gráficos
   const getColorByMeta = (razao: number, isVip: boolean): "red" | "yellow" | "green" => {
     if (isVip) {
       if (razao > 2) return "green";
@@ -200,25 +200,34 @@ const Index = () => {
     }
   };
 
+  const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
   const handleRefresh = () => refetch();
 
-  // Filtra os dados processados com base no Tipo de Aula selecionado
+  // [FILTRAGEM GLOBAL] Aplica Tipo e Horário
   const processedData = useMemo(() => {
-    const data = dashboardData || [];
-    if (selectedClassType === "all") return data;
-    return data.filter((aula) => aula.tipo_aula === selectedClassType);
-  }, [dashboardData, selectedClassType]);
+    let data = dashboardData || [];
+
+    // Filtro Tipo
+    if (selectedClassType !== "all") {
+      data = data.filter((aula) => aula.tipo_aula === selectedClassType);
+    }
+
+    // [NOVO] Filtro Horário
+    if (selectedTime !== "all") {
+      data = data.filter((aula) => aula.horario === selectedTime);
+    }
+
+    return data;
+  }, [dashboardData, selectedClassType, selectedTime]);
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
-  const metaValue = isVipFilter ? 2 : 3;
 
-  // CÁLCULO DOS KPIS
+  // KPIs
   const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
   const totalHorasPagas = processedData.reduce((acc, aula) => acc + (aula.qtd_professores || 0), 0);
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
 
-  // Lista de aulas em alerta
   const aulasEmAlerta = processedData
     .filter((aula) => aula.status_aula?.includes("🔴"))
     .map((aula) => ({
@@ -234,16 +243,10 @@ const Index = () => {
       listaAlunos: aula.lista_alunos,
     }));
 
-  // Dados para Gráfico de Performance por Horário
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
-
-    // [CORREÇÃO] Remove 'h' se existir e garante formatação correta (05h)
-    // Se vier "5:00" -> "05h". Se vier "05h" -> "05h".
-    const rawHour = aula.horario.replace(/h/gi, "").split(":")[0];
-    const hora = rawHour.padStart(2, "0") + "h";
-
+    const hora = aula.horario; // Já está normalizado "05h"
     const existing = horarioMap.get(hora) || { total: 0, count: 0 };
     horarioMap.set(hora, { total: existing.total + (aula.razao_aluno_prof || 0), count: existing.count + 1 });
   });
@@ -256,7 +259,6 @@ const Index = () => {
     }))
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
-  // Dados para Ranking de Professores
   const professorMap = new Map<string, number>();
   processedData.forEach((aula) => {
     if (!aula.professores) return;
@@ -299,15 +301,17 @@ const Index = () => {
           onFilterPeriodChange={setFilterPeriod}
         />
 
-        <div className="mb-6">
+        {/* Container para Filtros */}
+        <div className="mb-6 space-y-4">
           <ClassTypeFilter
             classTypes={classTypes}
             selectedType={selectedClassType}
             onTypeChange={setSelectedClassType}
           />
+          {/* [NOVO] Filtro de Horário */}
+          <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
         </div>
 
-        {/* KPIs Principais */}
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <KPICard
@@ -345,17 +349,19 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Lista de Alertas */}
         <section className="mb-8">
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
-        {/* GRÁFICO DE EVOLUÇÃO DIÁRIA */}
         <section className="mb-8">
-          <DailyEvolutionChart data={rawData || []} isLoading={isLoading} classType={selectedClassType} />
+          <DailyEvolutionChart
+            data={rawData || []}
+            isLoading={isLoading}
+            classType={selectedClassType}
+            selectedTime={selectedTime} // [NOVO] Passa o filtro de tempo
+          />
         </section>
 
-        {/* Gráficos Finais */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />

@@ -41,10 +41,11 @@ interface PresencaRaw {
 interface DailyEvolutionChartProps {
   data: PresencaRaw[];
   isLoading?: boolean;
-  classType: string; // [NOVO] Recebe o tipo selecionado
+  classType: string;
+  selectedTime: string; // [NOVO] Prop para filtro de horário
 }
 
-export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvolutionChartProps) {
+export function DailyEvolutionChart({ data, isLoading, classType, selectedTime }: DailyEvolutionChartProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const handlePreviousMonth = () => setCurrentMonth((prev) => subMonths(prev, 1));
@@ -52,16 +53,15 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
 
   const isVip = classType.toLowerCase() === "vip";
 
-  // Lógica de Cores (Copiada do padrão do sistema)
   const getBarColor = (razao: number) => {
     if (isVip) {
-      if (razao > 2) return "#22c55e"; // Verde
-      if (razao === 2) return "#eab308"; // Amarelo
-      return "#ef4444"; // Vermelho
+      if (razao > 2) return "#22c55e";
+      if (razao === 2) return "#eab308";
+      return "#ef4444";
     } else {
-      if (razao < 3) return "#ef4444"; // Vermelho
-      if (razao >= 3 && razao < 5) return "#eab308"; // Amarelo
-      return "#22c55e"; // Verde
+      if (razao < 3) return "#ef4444";
+      if (razao >= 3 && razao < 5) return "#eab308";
+      return "#22c55e";
     }
   };
 
@@ -82,10 +82,19 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
     >();
 
     data.forEach((row) => {
-      if (!row.data_aula) return;
+      if (!row.data_aula || !row.horario) return;
 
-      // [NOVO] Aplica filtro de Tipo de Aula também neste gráfico
+      // Filtro de Tipo
       if (classType !== "all" && row.tipo_aula !== classType) {
+        return;
+      }
+
+      // [NOVO] Filtro de Horário (com normalização)
+      // Normaliza "5:00" ou "05h" para "05h" para comparar
+      const rawHour = row.horario.replace(/h/gi, "").split(":")[0];
+      const normalizedRowTime = rawHour.padStart(2, "0") + "h";
+
+      if (selectedTime !== "all" && normalizedRowTime !== selectedTime) {
         return;
       }
 
@@ -119,11 +128,11 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
       string,
       {
         day: string;
-        fullDate: string; // Para o tooltip
+        fullDate: string;
         totalAlunos: number;
         totalHoras: number;
-        razaoDia: number; // Para a cor
-        barColor: string; // Cor calculada
+        razaoDia: number;
+        barColor: string;
       }
     >();
 
@@ -136,7 +145,7 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
         totalAlunos: 0,
         totalHoras: 0,
         razaoDia: 0,
-        barColor: "#eab308", // Default
+        barColor: "#eab308",
       });
     });
 
@@ -156,19 +165,17 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
       }
     });
 
-    // Calcular Razão e Cor final por dia
     daysMap.forEach((entry) => {
       if (entry.totalHoras > 0) {
-        // Arredonda para 2 casas para bater com a regra (ex: 2.00)
         entry.razaoDia = Number((entry.totalAlunos / entry.totalHoras).toFixed(2));
         entry.barColor = getBarColor(entry.razaoDia);
       } else {
-        entry.barColor = "#e2e8f0"; // Cinza se não houver aula (0 horas)
+        entry.barColor = "#e2e8f0";
       }
     });
 
     return Array.from(daysMap.values());
-  }, [data, currentMonth, classType]); // Recalcula se mudar o mês ou o filtro de tipo
+  }, [data, currentMonth, classType, selectedTime]); // [NOVO] Dependência selectedTime
 
   return (
     <Card className="col-span-full">
@@ -177,19 +184,18 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
           <CardTitle className="text-xl font-bold flex items-center gap-2">
             <Calendar className="w-5 h-5 text-primary" />
             Evolução Diária
+            {selectedTime !== "all" && <span className="text-primary text-sm ml-2">({selectedTime})</span>}
           </CardTitle>
-          <p className="text-sm text-muted-foreground">Alunos vs. Horas Pagas (Cores indicam eficiência da meta)</p>
+          <p className="text-sm text-muted-foreground">Alunos vs. Horas Pagas</p>
         </div>
 
         <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg border">
           <Button variant="ghost" size="icon" onClick={handlePreviousMonth} className="h-8 w-8">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-
           <span className="text-sm font-medium w-32 text-center capitalize">
             {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
           </span>
-
           <Button variant="ghost" size="icon" onClick={handleNextMonth} className="h-8 w-8">
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -238,24 +244,15 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
                 />
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1e293b", borderColor: "#334155", color: "#f8fafc" }}
-                  itemStyle={{ color: "#f8fafc" }}
-                  labelStyle={{ color: "#94a3b8" }}
-                  labelFormatter={(label, payload) => {
-                    if (payload && payload.length > 0) return `Dia ${payload[0].payload.fullDate}`;
-                    return `Dia ${label}`;
-                  }}
+                  labelFormatter={(label, payload) =>
+                    payload && payload.length > 0 ? `Dia ${payload[0].payload.fullDate}` : `Dia ${label}`
+                  }
                   formatter={(value: any, name: any, props: any) => {
-                    if (name === "Alunos") {
-                      // Mostra a eficiência no tooltip
-                      const ratio = props.payload.razaoDia;
-                      return [value, `Alunos (Média: ${ratio.toFixed(2)}/prof)`];
-                    }
+                    if (name === "Alunos") return [value, `Alunos (Média: ${props.payload.razaoDia.toFixed(2)})`];
                     return [value, name];
                   }}
                 />
                 <Legend />
-
-                {/* Barras com Cores Dinâmicas */}
                 <Bar
                   yAxisId="left"
                   dataKey="totalAlunos"
@@ -268,8 +265,6 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
                     <Cell key={`cell-${index}`} fill={entry.barColor} />
                   ))}
                 </Bar>
-
-                {/* Linha com Marcador Pequeno */}
                 <Line
                   yAxisId="right"
                   type="monotone"
@@ -277,7 +272,6 @@ export function DailyEvolutionChart({ data, isLoading, classType }: DailyEvoluti
                   name="Horas Pagas"
                   stroke="#3b82f6"
                   strokeWidth={3}
-                  // [MODIFICADO] Raio reduzido para 2 (bolinha menor)
                   dot={{ r: 2, fill: "#3b82f6", strokeWidth: 1, stroke: "#fff" }}
                   activeDot={{ r: 5 }}
                 />
