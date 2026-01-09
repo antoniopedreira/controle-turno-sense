@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Users, UserCheck, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,6 +7,7 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { AlertList } from '@/components/dashboard/AlertList';
 import { PerformanceChart } from '@/components/dashboard/PerformanceChart';
 import { ProfessorRanking } from '@/components/dashboard/ProfessorRanking';
+import { ClassTypeFilter } from '@/components/dashboard/ClassTypeFilter';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import type { AulaAlerta, PerformanceHorario, ProfessorRanking as ProfessorRankingType } from '@/data/mockDashboardData';
@@ -20,6 +21,9 @@ const Index = () => {
     from: startOfMonth(today),
     to: endOfMonth(today),
   });
+  
+  // Filtro por tipo de aula
+  const [selectedClassType, setSelectedClassType] = useState<string>('all');
 
   // Buscar dados da view_dashboard_didatico com filtro de data
   const { data: dashboardData, isLoading, refetch } = useQuery({
@@ -42,13 +46,47 @@ const Index = () => {
       return data;
     },
   });
+  
+  // Extrair tipos de aula únicos
+  const classTypes = useMemo(() => {
+    if (!dashboardData) return [];
+    const types = new Set<string>();
+    dashboardData.forEach(aula => {
+      if (aula.tipo_aula) types.add(aula.tipo_aula);
+    });
+    return Array.from(types).sort();
+  }, [dashboardData]);
+  
+  // Função para determinar a cor baseada na meta (varia por tipo de aula)
+  const getColorByMeta = (razao: number, isVip: boolean): 'red' | 'yellow' | 'green' => {
+    if (isVip) {
+      // Meta VIP: >2 verde, =2 amarelo, <2 vermelho
+      if (razao > 2) return 'green';
+      if (razao === 2) return 'yellow';
+      return 'red';
+    } else {
+      // Meta Geral: <3 vermelho, 3-4 amarelo, >5 verde
+      if (razao < 3) return 'red';
+      if (razao >= 3 && razao <= 4) return 'yellow';
+      return 'green';
+    }
+  };
+  
+  // Valor da meta para a linha de referência
+  const metaValue = selectedClassType.toLowerCase() === 'vip' ? 2 : 3;
 
   const handleRefresh = () => {
     refetch();
   };
 
-  // Processar dados para os componentes
-  const processedData = dashboardData || [];
+  // Processar dados para os componentes (aplicar filtro de tipo de aula)
+  const processedData = useMemo(() => {
+    const data = dashboardData || [];
+    if (selectedClassType === 'all') return data;
+    return data.filter(aula => aula.tipo_aula === selectedClassType);
+  }, [dashboardData, selectedClassType]);
+  
+  const isVipFilter = selectedClassType.toLowerCase() === 'vip';
 
   // Total de alunos únicos
   const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
@@ -71,24 +109,27 @@ const Index = () => {
     }));
 
   // Performance por horário (agrupa por horário)
-  const horarioMap = new Map<string, { total: number; count: number; cor: string }>();
+  const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach(aula => {
     if (!aula.horario) return;
-    const hora = aula.horario.split(':')[0] + 'h';
-    const existing = horarioMap.get(hora) || { total: 0, count: 0, cor: 'green' };
+    // Formata para apenas um "h" - ex: "05h"
+    const hora = aula.horario.split(':')[0].padStart(2, '0') + 'h';
+    const existing = horarioMap.get(hora) || { total: 0, count: 0 };
     horarioMap.set(hora, {
       total: existing.total + (aula.razao_aluno_prof || 0),
       count: existing.count + 1,
-      cor: aula.cor_indicadora || 'green',
     });
   });
 
   const performanceHorario: PerformanceHorario[] = Array.from(horarioMap.entries())
-    .map(([horario, data]) => ({
-      horario,
-      mediaAlunos: data.count > 0 ? data.total / data.count : 0,
-      corIndicadora: (data.cor as 'red' | 'yellow' | 'green'),
-    }))
+    .map(([horario, data]) => {
+      const mediaAlunos = data.count > 0 ? data.total / data.count : 0;
+      return {
+        horario,
+        mediaAlunos,
+        corIndicadora: getColorByMeta(mediaAlunos, isVipFilter),
+      };
+    })
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
   // Ranking de professores
@@ -108,11 +149,32 @@ const Index = () => {
     .sort((a, b) => b.totalAlunos - a.totalAlunos)
     .slice(0, 5);
 
-  // Determina o status da média de alunos por professor
+  // Determina o status da média de alunos por professor (baseado no filtro)
   const getMediaStatus = (media: number): 'danger' | 'warning' | 'success' => {
+    if (isVipFilter) {
+      if (media < 2) return 'danger';
+      if (media > 2) return 'success';
+      return 'warning';
+    }
     if (media < 3) return 'danger';
     if (media > 5) return 'success';
     return 'warning';
+  };
+  
+  // Texto da meta baseado no filtro
+  const getMetaText = () => {
+    if (isVipFilter) {
+      return mediaAlunosPorProfessor < 2 
+        ? 'Abaixo do ideal! Meta: 2+' 
+        : mediaAlunosPorProfessor > 2 
+          ? 'Excelente performance!'
+          : 'Dentro da meta';
+    }
+    return mediaAlunosPorProfessor < 3 
+      ? 'Abaixo do ideal! Meta: 3+' 
+      : mediaAlunosPorProfessor > 5 
+        ? 'Excelente performance!'
+        : 'Dentro da meta';
   };
 
   return (
@@ -126,6 +188,15 @@ const Index = () => {
           filterPeriod={filterPeriod}
           onFilterPeriodChange={setFilterPeriod}
         />
+        
+        {/* Filtro por tipo de aula */}
+        <div className="mb-6">
+          <ClassTypeFilter
+            classTypes={classTypes}
+            selectedType={selectedClassType}
+            onTypeChange={setSelectedClassType}
+          />
+        </div>
 
         {/* Seção 1: O Placar do Dia - KPIs Gigantes */}
         <section className="mb-8">
@@ -144,13 +215,7 @@ const Index = () => {
               value={mediaAlunosPorProfessor.toFixed(1)}
               icon={<UserCheck className="w-6 h-6" />}
               status={getMediaStatus(mediaAlunosPorProfessor)}
-              subtitle={
-                mediaAlunosPorProfessor < 3 
-                  ? 'Abaixo do ideal! Meta: 3+' 
-                  : mediaAlunosPorProfessor > 5 
-                    ? 'Excelente performance!'
-                    : 'Dentro da meta'
-              }
+              subtitle={getMetaText()}
               delay={100}
             />
             
@@ -176,7 +241,7 @@ const Index = () => {
 
         {/* Seção 3 e 4: Gráficos lado a lado em telas grandes */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <PerformanceChart data={performanceHorario} />
+          <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
         </section>
       </div>

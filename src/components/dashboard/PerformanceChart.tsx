@@ -4,6 +4,8 @@ import { TrendingUp } from 'lucide-react';
 
 interface PerformanceChartProps {
   data: PerformanceHorario[];
+  metaValue?: number;
+  isVipFilter?: boolean;
 }
 
 const getBarColor = (corIndicadora: 'red' | 'yellow' | 'green') => {
@@ -19,10 +21,21 @@ const getBarColor = (corIndicadora: 'red' | 'yellow' | 'green') => {
   }
 };
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label, isVipFilter }: any) => {
   if (active && payload && payload.length) {
     const value = payload[0].value;
-    const status = value < 3 ? 'Prejuízo' : value < 5 ? 'Atenção' : 'Lucro';
+    const corIndicadora = payload[0].payload.corIndicadora;
+    
+    const getStatusText = () => {
+      if (isVipFilter) {
+        if (value > 2) return 'Lucro';
+        if (value === 2) return 'Atenção';
+        return 'Prejuízo';
+      }
+      if (value < 3) return 'Prejuízo';
+      if (value <= 4) return 'Atenção';
+      return 'Lucro';
+    };
     
     return (
       <div className="bg-card border border-border rounded-lg p-3 shadow-xl">
@@ -30,8 +43,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <p className="text-sm text-muted-foreground">
           Média: <span className="font-bold text-foreground">{value.toFixed(1)}</span> alunos/prof
         </p>
-        <p className="text-xs mt-1" style={{ color: getBarColor(payload[0].payload.corIndicadora) }}>
-          {status}
+        <p className="text-xs mt-1" style={{ color: getBarColor(corIndicadora) }}>
+          {getStatusText()}
         </p>
       </div>
     );
@@ -39,7 +52,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function PerformanceChart({ data }: PerformanceChartProps) {
+export function PerformanceChart({ data, metaValue = 3, isVipFilter = false }: PerformanceChartProps) {
+  const metaLabel = isVipFilter ? `Meta VIP (${metaValue})` : `Meta Mínima (${metaValue})`;
+  
   return (
     <div className="dashboard-section opacity-0 animate-fade-in" style={{ animationDelay: '500ms' }}>
       <div className="flex items-start justify-between mb-2">
@@ -51,6 +66,7 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
           <p className="section-subtitle">
             Barras <span className="text-danger font-medium">vermelhas</span> estão abaixo da meta. 
             Barras <span className="text-success font-medium">verdes</span> estão dando lucro.
+            {isVipFilter && <span className="ml-1 text-primary">(Meta VIP: 2 alunos/prof)</span>}
           </p>
         </div>
       </div>
@@ -82,14 +98,17 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
                 style: { fill: 'hsl(215, 20%, 55%)', fontSize: 12 }
               }}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(217, 33%, 17%, 0.3)' }} />
+            <Tooltip 
+              content={<CustomTooltip isVipFilter={isVipFilter} />} 
+              cursor={{ fill: 'hsl(217, 33%, 17%, 0.3)' }} 
+            />
             <ReferenceLine 
-              y={3} 
+              y={metaValue} 
               stroke="hsl(0, 84%, 60%)" 
               strokeDasharray="5 5"
               strokeWidth={2}
               label={{ 
-                value: 'Meta Mínima (3)', 
+                value: metaLabel, 
                 position: 'right',
                 style: { fill: 'hsl(0, 84%, 60%)', fontSize: 11, fontWeight: 600 }
               }}
@@ -112,3 +131,4 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
     </div>
   );
 }
+
