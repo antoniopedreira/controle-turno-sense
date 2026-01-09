@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, Clock, Filter, Calendar, X, ChevronDown, Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardHeader";
@@ -7,14 +7,13 @@ import { KPICard } from "@/components/dashboard/KPICard";
 import { AlertList } from "@/components/dashboard/AlertList";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking, ProfessorStats } from "@/components/dashboard/ProfessorRanking";
-import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
 import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
-import { TimeFilter } from "@/components/dashboard/TimeFilter";
 import { FullHistoryDialog } from "@/components/dashboard/FullHistoryDialog";
 import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { DateRange } from "react-day-picker";
 import type { PerformanceHorario } from "@/data/mockDashboardData";
 
@@ -48,18 +47,19 @@ export interface AulaAgrupada {
 const Index = () => {
   const today = new Date();
 
-  // Filtros
+  // Filtros de Data
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("month");
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(today),
     to: endOfMonth(today),
   });
 
+  // Filtros de Dados
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
   const [selectedTime, setSelectedTime] = useState<string>("all");
 
-  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
-  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
+  // Controle dos Dropdowns
+  const [openFilter, setOpenFilter] = useState<"type" | "time" | null>(null);
 
   // Busca dados
   const {
@@ -75,7 +75,7 @@ const Index = () => {
     },
   });
 
-  // Processamento Mestre
+  // --- PROCESSAMENTO DE DADOS ---
   const dashboardData = useMemo(() => {
     if (!rawData) return [];
 
@@ -174,6 +174,7 @@ const Index = () => {
     return aulasProcessadas;
   }, [rawData, dateRange]);
 
+  // Listas para Filtros
   const availableTimes = useMemo(() => {
     if (!dashboardData) return [];
     const times = new Set<string>();
@@ -190,6 +191,7 @@ const Index = () => {
     return Array.from(types).sort();
   }, [dashboardData]);
 
+  // Funções Auxiliares
   const getColorByMeta = (razao: number, isVip: boolean): "red" | "yellow" | "green" => {
     if (isVip) {
       if (razao > 2) return "green";
@@ -205,6 +207,16 @@ const Index = () => {
   const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
   const handleRefresh = () => refetch();
 
+  // Reset de Filtros
+  const clearFilters = () => {
+    setSelectedClassType("all");
+    setSelectedTime("all");
+    setOpenFilter(null);
+  };
+
+  const hasActiveFilters = selectedClassType !== "all" || selectedTime !== "all";
+
+  // --- FILTRAGEM FINAL ---
   const processedData = useMemo(() => {
     let data = dashboardData || [];
     if (selectedClassType !== "all") data = data.filter((aula) => aula.tipo_aula === selectedClassType);
@@ -214,8 +226,8 @@ const Index = () => {
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
 
-  // KPIS
-  // [MODIFICAÇÃO] Cálculo de Alunos Únicos
+  // --- CÁLCULO DE KPIS ---
+  // Alunos Únicos
   const uniqueStudentsSet = new Set<string>();
   processedData.forEach((aula) => {
     if (aula.lista_alunos && Array.isArray(aula.lista_alunos)) {
@@ -223,8 +235,6 @@ const Index = () => {
     }
   });
   const totalAlunosUnicos = uniqueStudentsSet.size;
-
-  // Mantemos o total de presenças apenas para o subtítulo ou referência
   const totalPresencas = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
 
   const totalHorasPagas = processedData.reduce((acc, aula) => acc + (aula.qtd_professores || 0), 0);
@@ -249,6 +259,7 @@ const Index = () => {
 
   const percentAlertas = totalAulas > 0 ? ((aulasEmAlerta.length / totalAulas) * 100).toFixed(0) : 0;
 
+  // Gráficos
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
@@ -265,14 +276,12 @@ const Index = () => {
     }))
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
-  // Ranking Professores (Com Normalização de Nomes)
+  // Ranking Professores
   const professorMap = new Map<string, { totalAlunos: number; horasPagas: number }>();
-
   processedData.forEach((aula) => {
     if (!aula.professores) return;
     const profs = aula.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0);
     profs.forEach((prof) => {
-      // Normalização Opcional (se já não tiver rodado no SQL)
       let nomeTratado = prof.trim();
       if (nomeTratado === "Peu") nomeTratado = "Peu Beck";
 
@@ -310,8 +319,8 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-background p-4 md:p-8" onClick={() => setOpenFilter(null)}>
+      <div className="max-w-7xl mx-auto" onClick={(e) => e.stopPropagation()}>
         <DashboardHeader
           onRefresh={handleRefresh}
           isLoading={isLoading}
@@ -321,69 +330,134 @@ const Index = () => {
           onFilterPeriodChange={setFilterPeriod}
         />
 
-        <div className="mb-6 flex flex-wrap items-center gap-4 animate-fade-in">
-          <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
-            <Button
-              variant={isTypeFilterOpen ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setIsTypeFilterOpen(!isTypeFilterOpen)}
-              className="gap-2 h-9"
-            >
-              <Filter className="w-4 h-4 text-primary" />
-              {!isTypeFilterOpen && <span className="font-medium">Tipo de Aula</span>}
-              {selectedClassType !== "all" && !isTypeFilterOpen && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 h-5 px-1.5 text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
-                >
-                  {selectedClassType}
-                </Badge>
-              )}
-            </Button>
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTypeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
-            >
-              <div className="min-w-0 max-w-[85vw] md:max-w-lg">
-                <ClassTypeFilter
-                  classTypes={classTypes}
-                  selectedType={selectedClassType}
-                  onTypeChange={setSelectedClassType}
-                />
-              </div>
-            </div>
+        {/* === ZONA DE FILTROS (NOVA UI/UX) === */}
+        <div className="mb-6 flex flex-wrap items-center gap-3 animate-fade-in relative z-20">
+          {/* Label Visual */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mr-1">
+            <Filter className="w-4 h-4" />
+            <span className="hidden sm:inline">Filtrar por:</span>
           </div>
-          <Separator orientation="vertical" className="h-6 hidden sm:block" />
-          <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-lg border transition-all duration-300">
+
+          {/* 1. Dropdown Tipo de Aula */}
+          <div className="relative">
             <Button
-              variant={isTimeFilterOpen ? "secondary" : "ghost"}
+              variant={selectedClassType !== "all" ? "default" : "outline"}
               size="sm"
-              onClick={() => setIsTimeFilterOpen(!isTimeFilterOpen)}
-              className="gap-2 h-9"
+              onClick={() => setOpenFilter(openFilter === "type" ? null : "type")}
+              className={`gap-2 h-9 border-dashed ${selectedClassType === "all" ? "text-muted-foreground hover:text-foreground" : ""}`}
             >
-              <Clock className="w-4 h-4 text-primary" />
-              {!isTimeFilterOpen && <span className="font-medium">Horários</span>}
-              {selectedTime !== "all" && !isTimeFilterOpen && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1 h-5 px-1.5 text-[10px] bg-primary/10 text-primary hover:bg-primary/20"
-                >
-                  {selectedTime}
-                </Badge>
-              )}
+              {selectedClassType === "all" ? "Tipo de Aula" : selectedClassType}
+              <ChevronDown className={`w-3 h-3 transition-transform ${openFilter === "type" ? "rotate-180" : ""}`} />
             </Button>
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${isTimeFilterOpen ? "max-w-[800px] opacity-100" : "max-w-0 opacity-0"}`}
-            >
-              <div className="min-w-0 max-w-[85vw] md:max-w-lg">
-                <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
+
+            {/* Dropdown Content */}
+            {openFilter === "type" && (
+              <div className="absolute top-10 left-0 w-[200px] p-2 bg-popover rounded-lg border shadow-lg animate-in fade-in zoom-in-95 z-50">
+                <div className="flex flex-col gap-1">
+                  <Button
+                    variant={selectedClassType === "all" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="justify-start font-normal h-8"
+                    onClick={() => {
+                      setSelectedClassType("all");
+                      setOpenFilter(null);
+                    }}
+                  >
+                    Todos
+                    {selectedClassType === "all" && <Check className="ml-auto w-3 h-3" />}
+                  </Button>
+                  <Separator className="my-1" />
+                  {classTypes.map((type) => (
+                    <Button
+                      key={type}
+                      variant={selectedClassType === type ? "secondary" : "ghost"}
+                      size="sm"
+                      className="justify-start font-normal h-8"
+                      onClick={() => {
+                        setSelectedClassType(type);
+                        setOpenFilter(null);
+                      }}
+                    >
+                      {type}
+                      {selectedClassType === type && <Check className="ml-auto w-3 h-3" />}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
+
+          {/* 2. Dropdown Horários */}
+          <div className="relative">
+            <Button
+              variant={selectedTime !== "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setOpenFilter(openFilter === "time" ? null : "time")}
+              className={`gap-2 h-9 border-dashed ${selectedTime === "all" ? "text-muted-foreground hover:text-foreground" : ""}`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              {selectedTime === "all" ? "Horários" : selectedTime}
+              <ChevronDown className={`w-3 h-3 transition-transform ${openFilter === "time" ? "rotate-180" : ""}`} />
+            </Button>
+
+            {/* Dropdown Content */}
+            {openFilter === "time" && (
+              <div className="absolute top-10 left-0 w-[280px] p-3 bg-popover rounded-lg border shadow-lg animate-in fade-in zoom-in-95 z-50">
+                <div className="space-y-2">
+                  <Button
+                    variant={selectedTime === "all" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="w-full justify-start font-normal h-8"
+                    onClick={() => {
+                      setSelectedTime("all");
+                      setOpenFilter(null);
+                    }}
+                  >
+                    Todos os Horários
+                    {selectedTime === "all" && <Check className="ml-auto w-3 h-3" />}
+                  </Button>
+                  <Separator />
+                  <div className="grid grid-cols-4 gap-1">
+                    {availableTimes.map((time) => (
+                      <Button
+                        key={time}
+                        variant={selectedTime === time ? "default" : "outline"}
+                        size="sm"
+                        className={`h-8 text-xs px-0 ${selectedTime === time ? "" : "border-transparent bg-muted/50 hover:bg-muted"}`}
+                        onClick={() => {
+                          setSelectedTime(time);
+                          setOpenFilter(null);
+                        }}
+                      >
+                        {time}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Botão Limpar Filtros (Condicional) */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-9 px-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 animate-in fade-in slide-in-from-left-2"
+            >
+              <X className="w-4 h-4 mr-1" />
+              Limpar Filtros
+            </Button>
+          )}
+
+          {/* Backdrop Invisível para fechar ao clicar fora */}
+          {openFilter && <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenFilter(null)} />}
         </div>
 
+        {/* === KPIS === */}
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
-            {/* KPI ATUALIZADO: Alunos Únicos */}
             <KPICard
               label="Total de Alunos"
               value={totalAlunosUnicos}
@@ -428,14 +502,17 @@ const Index = () => {
           </div>
         </section>
 
+        {/* === ALERTAS E HISTÓRICO === */}
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div />
-            <FullHistoryDialog aulas={processedData} dateRange={dateRange} />
+            {/* Passando dashboardData para mostrar tudo no histórico */}
+            <FullHistoryDialog aulas={dashboardData} dateRange={dateRange} />
           </div>
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
+        {/* === EVOLUÇÃO DIÁRIA === */}
         <section className="mb-8">
           <DailyEvolutionChart
             data={rawData || []}
@@ -445,6 +522,7 @@ const Index = () => {
           />
         </section>
 
+        {/* === GRÁFICOS FINAIS === */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
