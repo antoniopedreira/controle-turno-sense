@@ -9,7 +9,8 @@ import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
 import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
-import { TimeFilter } from "@/components/dashboard/TimeFilter"; // [NOVO IMPORT]
+import { TimeFilter } from "@/components/dashboard/TimeFilter";
+import { FullHistoryDialog } from "@/components/dashboard/FullHistoryDialog"; // [NOVO IMPORT]
 import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import type { PerformanceHorario, ProfessorRanking as ProfessorRankingType } from "@/data/mockDashboardData";
@@ -52,7 +53,7 @@ const Index = () => {
   });
 
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
-  const [selectedTime, setSelectedTime] = useState<string>("all"); // [NOVO] Estado do Horário
+  const [selectedTime, setSelectedTime] = useState<string>("all");
 
   // Busca dados
   const {
@@ -79,7 +80,7 @@ const Index = () => {
         raw: PresencaRaw;
         count: number;
         alunos: string[];
-        normalizedTime: string; // Guarda a hora normalizada
+        normalizedTime: string;
       }
     >();
 
@@ -99,7 +100,7 @@ const Index = () => {
         if (!isWithinInterval(rowDate, { start, end })) return;
       }
 
-      // [NORMALIZAÇÃO DE HORA] Garante "05h", "06h"
+      // Normalização de Hora (remove 'h' e garante '05h')
       const rawHour = row.horario ? row.horario.replace(/h/gi, "").split(":")[0] : "00";
       const normalizedTime = rawHour.padStart(2, "0") + "h";
 
@@ -154,7 +155,7 @@ const Index = () => {
         aula_id: key,
         data_aula: raw.data_aula,
         data_iso: parse(raw.data_aula, "dd/MM/yyyy", new Date()).toISOString(),
-        horario: normalizedTime, // Usa a hora limpa
+        horario: normalizedTime,
         tipo_aula: raw.tipo_aula || "Geral",
         professores: raw.professores,
         qtd_alunos: count,
@@ -170,12 +171,11 @@ const Index = () => {
     return aulasProcessadas;
   }, [rawData, dateRange]);
 
-  // Lista de Horários Disponíveis (para o filtro)
+  // Listas para Filtros
   const availableTimes = useMemo(() => {
     if (!dashboardData) return [];
     const times = new Set<string>();
     dashboardData.forEach((aula) => times.add(aula.horario));
-    // Ordena numéricamente "05h" < "06h"
     return Array.from(times).sort();
   }, [dashboardData]);
 
@@ -203,16 +203,14 @@ const Index = () => {
   const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
   const handleRefresh = () => refetch();
 
-  // [FILTRAGEM GLOBAL] Aplica Tipo e Horário
+  // FILTRAGEM GLOBAL
   const processedData = useMemo(() => {
     let data = dashboardData || [];
 
-    // Filtro Tipo
     if (selectedClassType !== "all") {
       data = data.filter((aula) => aula.tipo_aula === selectedClassType);
     }
 
-    // [NOVO] Filtro Horário
     if (selectedTime !== "all") {
       data = data.filter((aula) => aula.horario === selectedTime);
     }
@@ -246,7 +244,7 @@ const Index = () => {
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
-    const hora = aula.horario; // Já está normalizado "05h"
+    const hora = aula.horario;
     const existing = horarioMap.get(hora) || { total: 0, count: 0 };
     horarioMap.set(hora, { total: existing.total + (aula.razao_aluno_prof || 0), count: existing.count + 1 });
   });
@@ -308,7 +306,6 @@ const Index = () => {
             selectedType={selectedClassType}
             onTypeChange={setSelectedClassType}
           />
-          {/* [NOVO] Filtro de Horário */}
           <TimeFilter times={availableTimes} selectedTime={selectedTime} onTimeChange={setSelectedTime} />
         </div>
 
@@ -349,7 +346,13 @@ const Index = () => {
           </div>
         </section>
 
-        <section className="mb-8">
+        {/* Lista de Alertas e Botão Ver Tudo */}
+        <section className="mb-8 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div /> {/* Espaçador */}
+            {/* [NOVO BOTÃO] */}
+            <FullHistoryDialog aulas={processedData} />
+          </div>
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
@@ -358,7 +361,7 @@ const Index = () => {
             data={rawData || []}
             isLoading={isLoading}
             classType={selectedClassType}
-            selectedTime={selectedTime} // [NOVO] Passa o filtro de tempo
+            selectedTime={selectedTime}
           />
         </section>
 
