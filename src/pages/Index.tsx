@@ -1,122 +1,143 @@
-import { useState, useMemo } from 'react';
-import { Users, UserCheck, AlertTriangle } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { DashboardHeader, FilterPeriod } from '@/components/dashboard/DashboardHeader';
-import { KPICard } from '@/components/dashboard/KPICard';
-import { AlertList } from '@/components/dashboard/AlertList';
-import { PerformanceChart } from '@/components/dashboard/PerformanceChart';
-import { ProfessorRanking } from '@/components/dashboard/ProfessorRanking';
-import { ClassTypeFilter } from '@/components/dashboard/ClassTypeFilter';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
-import type { DateRange } from 'react-day-picker';
-import type { AulaAlerta, PerformanceHorario, ProfessorRanking as ProfessorRankingType } from '@/data/mockDashboardData';
+import { useState, useMemo, useEffect } from "react";
+import { Users, UserCheck, AlertTriangle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardHeader";
+import { KPICard } from "@/components/dashboard/KPICard";
+import { AlertList } from "@/components/dashboard/AlertList";
+import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
+import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
+import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
+import { startOfMonth, endOfMonth, format } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import type {
+  AulaAlerta,
+  PerformanceHorario,
+  ProfessorRanking as ProfessorRankingType,
+} from "@/data/mockDashboardData";
 
 const Index = () => {
   const today = new Date();
-  
+
   // Filtro padrão: Este Mês
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('month');
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("month");
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(today),
     to: endOfMonth(today),
   });
-  
+
   // Filtro por tipo de aula
-  const [selectedClassType, setSelectedClassType] = useState<string>('all');
+  const [selectedClassType, setSelectedClassType] = useState<string>("all");
 
   // Buscar dados da view_dashboard_didatico com filtro de data
-  const { data: dashboardData, isLoading, refetch } = useQuery({
-    queryKey: ['dashboard-data', dateRange?.from, dateRange?.to],
+  const {
+    data: dashboardData,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["dashboard-data", dateRange?.from, dateRange?.to],
     queryFn: async () => {
-      let query = supabase.from('view_dashboard_didatico').select('*');
-      
+      let query = supabase.from("view_dashboard_didatico").select("*");
+
       if (dateRange?.from) {
-        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
-        query = query.gte('data_iso', fromDate);
+        const fromDate = format(dateRange.from, "yyyy-MM-dd");
+        query = query.gte("data_iso", fromDate);
       }
       if (dateRange?.to) {
-        const toDate = format(dateRange.to, 'yyyy-MM-dd');
-        query = query.lte('data_iso', toDate);
+        const toDate = format(dateRange.to, "yyyy-MM-dd");
+        query = query.lte("data_iso", toDate);
       }
-      
+
       const { data, error } = await query;
-      
-      if (error) throw error;
+
+      if (error) {
+        console.error("Erro ao buscar dados:", error);
+        throw error;
+      }
       return data;
     },
   });
-  
+
+  // LOG DE DEBUG: Ajuda a verificar o que chegou do banco
+  useEffect(() => {
+    if (dashboardData) {
+      const totalRows = dashboardData.length;
+      const totalSum = dashboardData.reduce((acc, item) => acc + Number(item.qtd_alunos || 0), 0);
+      console.log(`[DEBUG] Linhas recebidas: ${totalRows} | Soma Total Alunos: ${totalSum}`);
+      console.log("Dados brutos:", dashboardData);
+    }
+  }, [dashboardData]);
+
   // Extrair tipos de aula únicos
   const classTypes = useMemo(() => {
     if (!dashboardData) return [];
     const types = new Set<string>();
-    dashboardData.forEach(aula => {
+    dashboardData.forEach((aula) => {
       if (aula.tipo_aula) types.add(aula.tipo_aula);
     });
     return Array.from(types).sort();
   }, [dashboardData]);
-  
-  // Função para determinar a cor baseada na meta (varia por tipo de aula)
-  const getColorByMeta = (razao: number, isVip: boolean): 'red' | 'yellow' | 'green' => {
+
+  // Função para determinar a cor baseada na meta
+  const getColorByMeta = (razao: number, isVip: boolean): "red" | "yellow" | "green" => {
     if (isVip) {
-      // Meta VIP: >2 verde, =2 amarelo, <2 vermelho
-      if (razao > 2) return 'green';
-      if (razao === 2) return 'yellow';
-      return 'red';
+      if (razao > 2) return "green";
+      if (razao === 2) return "yellow";
+      return "red";
     } else {
-      // Meta Geral: <3 vermelho, 3-4 amarelo, >5 verde
-      if (razao < 3) return 'red';
-      if (razao >= 3 && razao <= 4) return 'yellow';
-      return 'green';
+      if (razao < 3) return "red";
+      if (razao >= 3 && razao <= 4) return "yellow";
+      return "green";
     }
   };
-  
-  // Valor da meta para a linha de referência
-  const metaValue = selectedClassType.toLowerCase() === 'vip' ? 2 : 3;
+
+  const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
 
   const handleRefresh = () => {
     refetch();
   };
 
-  // Processar dados para os componentes (aplicar filtro de tipo de aula)
+  // Processar dados (Correção para filtro Geral/All)
   const processedData = useMemo(() => {
     const data = dashboardData || [];
-    if (selectedClassType === 'all') return data;
-    return data.filter(aula => aula.tipo_aula === selectedClassType);
-  }, [dashboardData, selectedClassType]);
-  
-  const isVipFilter = selectedClassType.toLowerCase() === 'vip';
+    // Normaliza para garantir que 'Geral' funcione como 'all'
+    const filterType = selectedClassType === "Geral" ? "all" : selectedClassType;
 
-  // Total de alunos únicos
-  const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
+    if (filterType === "all") return data;
+    return data.filter((aula) => aula.tipo_aula === filterType);
+  }, [dashboardData, selectedClassType]);
+
+  const isVipFilter = selectedClassType.toLowerCase() === "vip";
+
+  // --- CORREÇÃO MATEMÁTICA ---
+  // Garante que estamos somando números (Number()) para evitar concatenação de texto
+  const totalAlunos = processedData.reduce((acc, aula) => acc + Number(aula.qtd_alunos || 0), 0);
 
   // Média de alunos por professor
-  const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
+  const totalRazao = processedData.reduce((acc, aula) => acc + Number(aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
 
-  // Aulas em alerta (status vermelho)
+  // Aulas em alerta
   const aulasEmAlerta: AulaAlerta[] = processedData
-    .filter(aula => aula.status_aula?.includes('🔴'))
-    .map(aula => ({
-      id: aula.aula_id || '',
-      data: aula.data_aula || '',
-      horario: aula.horario || '',
-      professores: aula.professores || '',
-      qtdAlunos: aula.qtd_alunos || 0,
-      status: aula.status_aula || '',
-      corIndicadora: (aula.cor_indicadora as 'red' | 'yellow' | 'green') || 'red',
+    .filter((aula) => aula.status_aula?.includes("🔴"))
+    .map((aula) => ({
+      id: aula.aula_id || "",
+      data: aula.data_aula || "",
+      horario: aula.horario || "",
+      professores: aula.professores || "",
+      qtdAlunos: Number(aula.qtd_alunos || 0),
+      status: aula.status_aula || "",
+      corIndicadora: (aula.cor_indicadora as "red" | "yellow" | "green") || "red",
     }));
 
-  // Performance por horário (agrupa por horário)
+  // Performance por horário
   const horarioMap = new Map<string, { total: number; count: number }>();
-  processedData.forEach(aula => {
+  processedData.forEach((aula) => {
     if (!aula.horario) return;
-    // Formata para apenas um "h" - ex: "05h"
-    const hora = aula.horario.split(':')[0].padStart(2, '0') + 'h';
+    const hora = aula.horario.split(":")[0].padStart(2, "0") + "h";
     const existing = horarioMap.get(hora) || { total: 0, count: 0 };
     horarioMap.set(hora, {
-      total: existing.total + (aula.razao_aluno_prof || 0),
+      total: existing.total + Number(aula.razao_aluno_prof || 0),
       count: existing.count + 1,
     });
   });
@@ -134,12 +155,12 @@ const Index = () => {
 
   // Ranking de professores
   const professorMap = new Map<string, number>();
-  processedData.forEach(aula => {
+  processedData.forEach((aula) => {
     if (!aula.professores) return;
-    const profs = aula.professores.split(',').map(p => p.trim());
-    profs.forEach(prof => {
+    const profs = aula.professores.split(",").map((p) => p.trim());
+    profs.forEach((prof) => {
       if (prof) {
-        professorMap.set(prof, (professorMap.get(prof) || 0) + (aula.qtd_alunos || 0));
+        professorMap.set(prof, (professorMap.get(prof) || 0) + Number(aula.qtd_alunos || 0));
       }
     });
   });
@@ -149,47 +170,44 @@ const Index = () => {
     .sort((a, b) => b.totalAlunos - a.totalAlunos)
     .slice(0, 5);
 
-  // Determina o status da média de alunos por professor (baseado no filtro)
-  const getMediaStatus = (media: number): 'danger' | 'warning' | 'success' => {
+  const getMediaStatus = (media: number): "danger" | "warning" | "success" => {
     if (isVipFilter) {
-      if (media < 2) return 'danger';
-      if (media > 2) return 'success';
-      return 'warning';
+      if (media < 2) return "danger";
+      if (media > 2) return "success";
+      return "warning";
     }
-    if (media < 3) return 'danger';
-    if (media > 5) return 'success';
-    return 'warning';
+    if (media < 3) return "danger";
+    if (media > 5) return "success";
+    return "warning";
   };
-  
-  // Texto da meta baseado no filtro
+
   const getMetaText = () => {
     if (isVipFilter) {
-      return mediaAlunosPorProfessor < 2 
-        ? 'Abaixo do ideal! Meta: 2+' 
-        : mediaAlunosPorProfessor > 2 
-          ? 'Excelente performance!'
-          : 'Dentro da meta';
+      return mediaAlunosPorProfessor < 2
+        ? "Abaixo do ideal! Meta: 2+"
+        : mediaAlunosPorProfessor > 2
+          ? "Excelente performance!"
+          : "Dentro da meta";
     }
-    return mediaAlunosPorProfessor < 3 
-      ? 'Abaixo do ideal! Meta: 3+' 
-      : mediaAlunosPorProfessor > 5 
-        ? 'Excelente performance!'
-        : 'Dentro da meta';
+    return mediaAlunosPorProfessor < 3
+      ? "Abaixo do ideal! Meta: 3+"
+      : mediaAlunosPorProfessor > 5
+        ? "Excelente performance!"
+        : "Dentro da meta";
   };
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <DashboardHeader 
-          onRefresh={handleRefresh} 
+        <DashboardHeader
+          onRefresh={handleRefresh}
           isLoading={isLoading}
           dateRange={dateRange}
           onDateRangeChange={setDateRange}
           filterPeriod={filterPeriod}
           onFilterPeriodChange={setFilterPeriod}
         />
-        
-        {/* Filtro por tipo de aula */}
+
         <div className="mb-6">
           <ClassTypeFilter
             classTypes={classTypes}
@@ -198,7 +216,6 @@ const Index = () => {
           />
         </div>
 
-        {/* Seção 1: O Placar do Dia - KPIs Gigantes */}
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <KPICard
@@ -209,7 +226,7 @@ const Index = () => {
               subtitle="Alunos no período"
               delay={0}
             />
-            
+
             <KPICard
               label="Média Alunos/Professor"
               value={mediaAlunosPorProfessor.toFixed(1)}
@@ -218,28 +235,22 @@ const Index = () => {
               subtitle={getMetaText()}
               delay={100}
             />
-            
+
             <KPICard
               label="Aulas em Alerta"
               value={aulasEmAlerta.length}
               icon={<AlertTriangle className="w-6 h-6" />}
-              status={aulasEmAlerta.length > 0 ? 'danger' : 'success'}
-              subtitle={
-                aulasEmAlerta.length > 0 
-                  ? 'Precisam de atenção imediata' 
-                  : 'Nenhum alerta!'
-              }
+              status={aulasEmAlerta.length > 0 ? "danger" : "success"}
+              subtitle={aulasEmAlerta.length > 0 ? "Precisam de atenção imediata" : "Nenhum alerta!"}
               delay={200}
             />
           </div>
         </section>
 
-        {/* Seção 2: Lista de Alertas */}
         <section className="mb-8">
           <AlertList aulas={aulasEmAlerta} />
         </section>
 
-        {/* Seção 3 e 4: Gráficos lado a lado em telas grandes */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
