@@ -8,8 +8,8 @@ import { AlertList } from "@/components/dashboard/AlertList";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking } from "@/components/dashboard/ProfessorRanking";
 import { ClassTypeFilter } from "@/components/dashboard/ClassTypeFilter";
-import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart"; // [NOVO IMPORT]
-import { startOfMonth, endOfMonth, format, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
+import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import type {
   AulaAlerta,
@@ -49,14 +49,17 @@ export interface AulaAgrupada {
 const Index = () => {
   const today = new Date();
 
+  // Filtro de data global da página
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("month");
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(today),
     to: endOfMonth(today),
   });
 
+  // Filtro de Tipo de Aula (VIP, Geral, etc)
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
 
+  // 1. BUSCA DADOS BRUTOS DO SUPABASE
   const {
     data: rawData,
     isLoading,
@@ -65,23 +68,22 @@ const Index = () => {
     queryKey: ["controle_presenca_raw"],
     queryFn: async () => {
       const { data, error } = await supabase.from("controle_presenca").select("*");
-
       if (error) throw error;
       return data as PresencaRaw[];
     },
   });
 
+  // 2. PROCESSAMENTO E AGRUPAMENTO DOS DADOS (PRINCIPAL)
   const dashboardData = useMemo(() => {
     if (!rawData) return [];
 
-    // Map modificado para guardar lista de alunos e coordenador
     const aulasMap = new Map<
       string,
       {
         ids: string[];
         raw: PresencaRaw;
         count: number;
-        alunos: string[]; // Array para nomes
+        alunos: string[];
       }
     >();
 
@@ -95,6 +97,7 @@ const Index = () => {
         return;
       }
 
+      // Aplica o filtro de data global
       if (dateRange?.from && dateRange?.to) {
         const start = startOfDay(dateRange.from);
         const end = endOfDay(dateRange.to);
@@ -103,6 +106,7 @@ const Index = () => {
         }
       }
 
+      // Chave única para agrupar alunos na mesma turma
       const key = `${row.data_aula}-${row.horario}-${row.arena}-${row.tipo_aula}-${row.professores}`;
 
       if (!aulasMap.has(key)) {
@@ -112,7 +116,7 @@ const Index = () => {
       const entry = aulasMap.get(key)!;
       entry.ids.push(row.id);
       entry.count += 1;
-      if (row.aluno) entry.alunos.push(row.aluno); // Guarda o nome do aluno
+      if (row.aluno) entry.alunos.push(row.aluno);
     });
 
     const aulasProcessadas: AulaAgrupada[] = [];
@@ -120,6 +124,7 @@ const Index = () => {
     aulasMap.forEach((entry, key) => {
       const { raw, count, alunos } = entry;
 
+      // Conta professores (separados por vírgula ou ' e ')
       const profsList = raw.professores ? raw.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0) : [];
       const qtdProfs = profsList.length || 1;
 
@@ -130,6 +135,7 @@ const Index = () => {
 
       const isVip = raw.tipo_aula?.toUpperCase().includes("VIP");
 
+      // Regra de Cores (Semáforo)
       if (isVip) {
         if (razao < 2) {
           status = "🔴 Prejuízo";
@@ -171,6 +177,7 @@ const Index = () => {
     return aulasProcessadas;
   }, [rawData, dateRange]);
 
+  // Lista de tipos de aula para o filtro
   const classTypes = useMemo(() => {
     if (!dashboardData) return [];
     const types = new Set<string>();
@@ -180,6 +187,7 @@ const Index = () => {
     return Array.from(types).sort();
   }, [dashboardData]);
 
+  // Função auxiliar de cores para gráficos
   const getColorByMeta = (razao: number, isVip: boolean): "red" | "yellow" | "green" => {
     if (isVip) {
       if (razao > 2) return "green";
@@ -192,9 +200,9 @@ const Index = () => {
     }
   };
 
-  const metaValue = selectedClassType.toLowerCase() === "vip" ? 2 : 3;
   const handleRefresh = () => refetch();
 
+  // Filtra os dados processados com base no Tipo de Aula selecionado
   const processedData = useMemo(() => {
     const data = dashboardData || [];
     if (selectedClassType === "all") return data;
@@ -202,12 +210,15 @@ const Index = () => {
   }, [dashboardData, selectedClassType]);
 
   const isVipFilter = selectedClassType.toLowerCase() === "vip";
+  const metaValue = isVipFilter ? 2 : 3;
 
+  // CÁLCULO DOS KPIS
   const totalAlunos = processedData.reduce((acc, aula) => acc + (aula.qtd_alunos || 0), 0);
   const totalHorasPagas = processedData.reduce((acc, aula) => acc + (aula.qtd_professores || 0), 0);
   const totalRazao = processedData.reduce((acc, aula) => acc + (aula.razao_aluno_prof || 0), 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
 
+  // Lista de aulas em alerta
   const aulasEmAlerta = processedData
     .filter((aula) => aula.status_aula?.includes("🔴"))
     .map((aula) => ({
@@ -223,6 +234,7 @@ const Index = () => {
       listaAlunos: aula.lista_alunos,
     }));
 
+  // Dados para Gráfico de Performance por Horário
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
@@ -239,6 +251,7 @@ const Index = () => {
     }))
     .sort((a, b) => a.horario.localeCompare(b.horario));
 
+  // Dados para Ranking de Professores
   const professorMap = new Map<string, number>();
   processedData.forEach((aula) => {
     if (!aula.professores) return;
@@ -280,6 +293,7 @@ const Index = () => {
           filterPeriod={filterPeriod}
           onFilterPeriodChange={setFilterPeriod}
         />
+
         <div className="mb-6">
           <ClassTypeFilter
             classTypes={classTypes}
@@ -287,6 +301,8 @@ const Index = () => {
             onTypeChange={setSelectedClassType}
           />
         </div>
+
+        {/* KPIs Principais */}
         <section className="mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <KPICard
@@ -329,11 +345,13 @@ const Index = () => {
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
 
-        {/* [NOVO] Gráfico de Evolução Diária (Abaixo da AlertList) */}
+        {/* GRÁFICO DE EVOLUÇÃO DIÁRIA (NOVO) */}
+        {/* Passamos rawData completo e o filtro de tipo selecionado */}
         <section className="mb-8">
-          <DailyEvolutionChart data={rawData || []} isLoading={isLoading} />
+          <DailyEvolutionChart data={rawData || []} isLoading={isLoading} classType={selectedClassType} />
         </section>
 
+        {/* Gráficos Finais */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <PerformanceChart data={performanceHorario} metaValue={metaValue} isVipFilter={isVipFilter} />
           <ProfessorRanking data={professorRanking} />
