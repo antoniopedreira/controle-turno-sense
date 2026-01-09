@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Users, UserCheck, AlertTriangle } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, Clock } from "lucide-react"; // [Modificado: Adicionado Clock]
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader, FilterPeriod } from "@/components/dashboard/DashboardHeader";
@@ -27,11 +27,11 @@ interface PresencaRaw {
   aluno: string;
 }
 
-// Interface da Aula Agrupada (simulando o que a View fazia)
+// Interface da Aula Agrupada
 interface AulaAgrupada {
   aula_id: string;
   data_aula: string;
-  data_iso: string; // Para ordenação
+  data_iso: string;
   horario: string;
   tipo_aula: string;
   professores: string;
@@ -54,8 +54,7 @@ const Index = () => {
 
   const [selectedClassType, setSelectedClassType] = useState<string>("all");
 
-  // 1. BUSCA DADOS BRUTOS (SEM FILTRO DE DATA NO SUPABASE PARA GARANTIR)
-  // Trazemos tudo e filtramos no JS para evitar erros de conversão do SQL
+  // 1. BUSCA DADOS BRUTOS
   const {
     data: rawData,
     isLoading,
@@ -63,8 +62,6 @@ const Index = () => {
   } = useQuery({
     queryKey: ["controle_presenca_raw"],
     queryFn: async () => {
-      // Busca tudo da tabela bruta.
-      // Se ficar muito pesado no futuro, podemos adicionar um filtro .gte('created_at', ...)
       const { data, error } = await supabase.from("controle_presenca").select("*");
 
       if (error) {
@@ -75,12 +72,10 @@ const Index = () => {
     },
   });
 
-  // 2. PROCESSAMENTO E AGRUPAMENTO (O CÉREBRO DA OPERAÇÃO)
+  // 2. PROCESSAMENTO E AGRUPAMENTO
   const dashboardData = useMemo(() => {
     if (!rawData) return [];
 
-    // Map para agrupar alunos em turmas
-    // Chave única: Data + Horario + Arena + Tipo + Professores
     const aulasMap = new Map<
       string,
       {
@@ -90,12 +85,9 @@ const Index = () => {
       }
     >();
 
-    // Filtra por data e Agrupa
     rawData.forEach((row) => {
       if (!row.data_aula) return;
 
-      // Parse da data texto (ex: "05/01/2026") para Objeto JS
-      // O n8n garante DD/MM/YYYY
       let rowDate: Date;
       try {
         rowDate = parse(row.data_aula, "dd/MM/yyyy", new Date());
@@ -104,17 +96,14 @@ const Index = () => {
         return;
       }
 
-      // Aplica o Filtro de Data Selecionado
       if (dateRange?.from && dateRange?.to) {
         const start = startOfDay(dateRange.from);
         const end = endOfDay(dateRange.to);
-        // Verifica se a data da aula está dentro do intervalo
         if (!isWithinInterval(rowDate, { start, end })) {
           return;
         }
       }
 
-      // Cria a chave única da aula
       const key = `${row.data_aula}-${row.horario}-${row.arena}-${row.tipo_aula}-${row.professores}`;
 
       if (!aulasMap.has(key)) {
@@ -126,22 +115,18 @@ const Index = () => {
       entry.count += 1;
     });
 
-    // Transforma o Map em Array de Aulas (Calculando métricas)
     const aulasProcessadas: AulaAgrupada[] = [];
 
     aulasMap.forEach((entry, key) => {
       const { raw, count } = entry;
 
-      // Conta professores (separa por vírgula ou 'e')
-      // Ex: "Rafael, Thieres" -> 2
       const profsList = raw.professores ? raw.professores.split(/[,e]/).filter((p) => p.trim().length > 0) : [];
-      const qtdProfs = profsList.length || 1; // Mínimo 1 para não dividir por zero
+      const qtdProfs = profsList.length || 1;
 
       const razao = Number((count / qtdProfs).toFixed(2));
 
-      // Lógica do Semáforo (Copiada do SQL para JS)
       let status = "⚪ Analisar";
-      let cor = "#eab308"; // Amarelo padrão
+      let cor = "#eab308";
 
       const isVip = raw.tipo_aula?.toUpperCase().includes("VIP");
 
@@ -167,7 +152,7 @@ const Index = () => {
       }
 
       aulasProcessadas.push({
-        aula_id: key, // Chave gerada serve como ID
+        aula_id: key,
         data_aula: raw.data_aula,
         data_iso: parse(raw.data_aula, "dd/MM/yyyy", new Date()).toISOString(),
         horario: raw.horario,
@@ -182,18 +167,18 @@ const Index = () => {
     });
 
     return aulasProcessadas;
-  }, [rawData, dateRange]); // Recalcula sempre que os dados brutos ou a data mudarem
+  }, [rawData, dateRange]);
 
   // LOG DE DEBUG
   useEffect(() => {
     if (dashboardData) {
-      const totalRows = dashboardData.length; // qtd de aulas
+      const totalRows = dashboardData.length;
       const totalAlunos = dashboardData.reduce((acc, aula) => acc + aula.qtd_alunos, 0);
       console.log(`[DEBUG JS] Aulas Montadas: ${totalRows} | Total Alunos Real: ${totalAlunos}`);
     }
   }, [dashboardData]);
 
-  // --- RESTO DA LÓGICA DE UI (Gráficos, KPIs) ---
+  // --- RESTO DA LÓGICA DE UI ---
 
   const classTypes = useMemo(() => {
     const types = new Set<string>();
@@ -228,6 +213,9 @@ const Index = () => {
 
   // KPIs
   const totalAlunos = processedData.reduce((acc, aula) => acc + aula.qtd_alunos, 0);
+
+  // [NOVO CÁLCULO] Total de Horas Pagas (soma da qtd de professores por aula)
+  const totalHorasPagas = processedData.reduce((acc, aula) => acc + Number(aula.qtd_professores || 0), 0);
 
   const totalRazao = processedData.reduce((acc, aula) => acc + aula.razao_aluno_prof, 0);
   const mediaAlunosPorProfessor = processedData.length > 0 ? totalRazao / processedData.length : 0;
@@ -331,7 +319,8 @@ const Index = () => {
         </div>
 
         <section className="mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          {/* [Modificado] Ajustado Grid para acomodar 4 cards em telas grandes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <KPICard
               label="Total de Alunos"
               value={totalAlunos}
@@ -339,6 +328,16 @@ const Index = () => {
               status="neutral"
               subtitle="Alunos no período"
               delay={0}
+            />
+
+            {/* [NOVO CARD] Total Horas Pagas */}
+            <KPICard
+              label="Horas Pagas"
+              value={totalHorasPagas}
+              icon={<Clock className="w-6 h-6" />}
+              status="neutral"
+              subtitle="Horas trabalhadas"
+              delay={50}
             />
 
             <KPICard
