@@ -1,40 +1,33 @@
-import { useState } from 'react';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import { useState, useMemo } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
-  DialogDescription
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { 
-  Calendar, 
-  Clock, 
-  Users, 
-  Search, 
-  ChevronRight, 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Calendar,
+  Clock,
+  Users,
+  Search,
+  ChevronRight,
   ArrowLeft,
   UserCog,
   GraduationCap,
   AlertTriangle,
-  History
-} from 'lucide-react';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+  History,
+  User,
+} from "lucide-react";
 
-// Reutilizando a interface (ou defina-a aqui se não estiver exportada globalmente)
 interface AulaFull {
   aula_id: string;
   data_aula: string;
@@ -49,23 +42,24 @@ interface AulaFull {
 }
 
 interface FullHistoryDialogProps {
-  aulas: any[]; // Usando any para flexibilidade, mas o ideal é AulaAgrupada
+  aulas: any[];
 }
 
 export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedAula, setSelectedAula] = useState<AulaFull | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState("aulas");
 
-  // Filtragem simples
-  const filteredAulas = aulas.filter(aula => 
-    aula.professores.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    aula.tipo_aula.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    aula.horario.includes(searchTerm)
+  // --- LÓGICA DA ABA AULAS ---
+  const filteredAulas = aulas.filter(
+    (aula) =>
+      aula.professores.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      aula.tipo_aula.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      aula.horario.includes(searchTerm),
   );
 
-  // Paginação
   const itemsPerPage = 8;
   const totalPages = Math.ceil(filteredAulas.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -75,224 +69,288 @@ export function FullHistoryDialog({ aulas }: FullHistoryDialogProps) {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
-  const handleRowClick = (aula: any) => {
-    setSelectedAula(aula);
-  };
+  // --- LÓGICA DA ABA ALUNOS (NOVO) ---
+  const sortedUniqueStudents = useMemo(() => {
+    const allStudents = new Set<string>();
+    aulas.forEach((aula) => {
+      if (aula.lista_alunos && Array.isArray(aula.lista_alunos)) {
+        aula.lista_alunos.forEach((aluno: string) => allStudents.add(aluno));
+      }
+    });
+    // Filtra pelo termo de busca também na aba de alunos
+    return Array.from(allStudents)
+      .filter((nome) => nome.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => a.localeCompare(b));
+  }, [aulas, searchTerm]);
 
-  const handleBackToList = () => {
-    setSelectedAula(null);
+  // Resetar estados ao fechar
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      setSelectedAula(null);
+      setSearchTerm("");
+      setActiveTab("aulas");
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { setIsOpen(open); if(!open) setSelectedAula(null); }}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full md:w-auto gap-2 border-primary/20 hover:bg-primary/10">
           <History className="w-4 h-4 text-primary" />
-          Ver Todas as Aulas ({aulas.length})
+          Ver Histórico Completo
         </Button>
       </DialogTrigger>
-      
-      <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 gap-0">
-        
-        {/* HEADER DO MODAL */}
-        <div className="p-6 border-b">
-          <DialogHeader>
+
+      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+        {/* HEADER FIXO */}
+        <div className="p-6 pb-4 border-b bg-background z-10">
+          <DialogHeader className="mb-4">
             <DialogTitle className="flex items-center gap-2 text-xl">
               {selectedAula ? (
-                <Button variant="ghost" size="sm" className="p-0 h-auto hover:bg-transparent gap-2" onClick={handleBackToList}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-0 h-auto hover:bg-transparent gap-2"
+                  onClick={() => setSelectedAula(null)}
+                >
                   <ArrowLeft className="w-5 h-5" />
                   Voltar para Lista
                 </Button>
               ) : (
-                <>
+                <div className="flex items-center gap-2">
                   <History className="w-5 h-5 text-primary" />
-                  Histórico Completo do Período
-                </>
+                  <span>Visão Geral do Período</span>
+                </div>
               )}
             </DialogTitle>
             <DialogDescription>
-              {selectedAula 
-                ? `Detalhes de ${selectedAula.tipo_aula} - ${selectedAula.horario}`
-                : "Visualize todas as aulas, alunos e professores registrados."}
+              {selectedAula
+                ? "Detalhes completos do turno selecionado."
+                : "Acompanhe todas as aulas realizadas e a lista de presença."}
             </DialogDescription>
           </DialogHeader>
+
+          {!selectedAula && (
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+                <TabsList>
+                  <TabsTrigger value="aulas" className="gap-2">
+                    <Calendar className="w-4 h-4" />
+                    Aulas ({aulas.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="alunos" className="gap-2">
+                    <Users className="w-4 h-4" />
+                    Alunos ({sortedUniqueStudents.length})
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={activeTab === "aulas" ? "Buscar aula..." : "Buscar aluno..."}
+                  className="pl-9 h-9"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* CONTEÚDO (LISTA OU DETALHE) */}
-        <div className="flex-1 overflow-hidden p-6 pt-4">
-          
+        {/* CONTEÚDO SCROLLÁVEL */}
+        <div className="flex-1 overflow-hidden bg-muted/5 relative">
           {selectedAula ? (
-            // === VISÃO DETALHADA (Igual ao AlertList) ===
-            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              {/* Coordenador */}
-              <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                <div className="p-2 bg-primary/10 rounded-full">
-                  <UserCog className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase">Coordenador</p>
-                  <p className="font-medium">{selectedAula.coordenador || 'Não informado'}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Professores */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <GraduationCap className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium">Professores</span>
+            // === VISÃO DETALHADA DA AULA ===
+            <div className="h-full flex flex-col p-6 animate-in slide-in-from-right-10 duration-200">
+              {/* Cards de Topo */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 shrink-0">
+                <div className="p-4 bg-background rounded-lg border shadow-sm space-y-3">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <UserCog className="w-4 h-4" />
+                    <span className="text-sm font-medium uppercase">Coordenador</span>
                   </div>
-                  <div className="p-3 bg-muted/30 rounded-lg text-sm border font-medium">
-                    {selectedAula.professores}
-                  </div>
+                  <p className="text-lg font-semibold">{selectedAula.coordenador || "Não informado"}</p>
                 </div>
 
-                {/* Status */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4" style={{ color: selectedAula.cor_indicadora }} />
-                    <span className="text-sm font-medium">Performance</span>
+                <div className="p-4 bg-background rounded-lg border shadow-sm space-y-3">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="text-sm font-medium uppercase">Status</span>
                   </div>
-                  <div 
-                    className="p-3 rounded-lg text-sm font-medium border"
-                    style={{ 
-                      backgroundColor: `${selectedAula.cor_indicadora}15`, 
+                  <Badge
+                    variant="outline"
+                    className="text-sm px-3 py-1"
+                    style={{
+                      borderColor: selectedAula.cor_indicadora,
                       color: selectedAula.cor_indicadora,
-                      borderColor: `${selectedAula.cor_indicadora}30`
+                      backgroundColor: `${selectedAula.cor_indicadora}10`,
                     }}
                   >
                     {selectedAula.status_aula}
+                  </Badge>
+                </div>
+
+                <div className="md:col-span-2 p-4 bg-background rounded-lg border shadow-sm space-y-2">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <GraduationCap className="w-4 h-4" />
+                    <span className="text-sm font-medium uppercase">Professores</span>
                   </div>
+                  <p className="text-base font-medium">{selectedAula.professores}</p>
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Lista de Alunos */}
-              <div className="space-y-2 h-full flex flex-col">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+              {/* Lista de Alunos (Flexível para ocupar o resto da altura) */}
+              <div className="flex-1 flex flex-col bg-background rounded-lg border shadow-sm overflow-hidden">
+                <div className="p-4 border-b flex justify-between items-center bg-muted/10">
+                  <div className="flex items-center gap-2 font-semibold">
                     <Users className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium">Alunos Presentes</span>
+                    Alunos Presentes
                   </div>
                   <Badge variant="secondary">{selectedAula.lista_alunos?.length || 0}</Badge>
                 </div>
-                
-                <ScrollArea className="h-[250px] w-full rounded-md border p-4 bg-muted/10">
-                  {selectedAula.lista_alunos && selectedAula.lista_alunos.length > 0 ? (
-                    <ul className="space-y-2">
-                      {selectedAula.lista_alunos.map((aluno: string, idx: number) => (
-                        <li key={idx} className="text-sm flex items-center gap-2 pb-2 border-b last:border-0 last:pb-0 border-border/50">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary/50" />
-                          {aluno}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-8">
-                      Nenhum aluno registrado nesta lista.
-                    </p>
-                  )}
+
+                <ScrollArea className="flex-1 p-0">
+                  <div className="p-4">
+                    {selectedAula.lista_alunos && selectedAula.lista_alunos.length > 0 ? (
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedAula.lista_alunos.map((aluno: string, idx: number) => (
+                          <li
+                            key={idx}
+                            className="text-sm flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 border border-transparent hover:border-border transition-colors"
+                          >
+                            <div className="w-2 h-2 rounded-full bg-primary/40 shrink-0" />
+                            <span className="truncate">{aluno}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
+                        <Users className="w-8 h-8 mb-2 opacity-20" />
+                        Nenhum aluno registrado.
+                      </div>
+                    )}
+                  </div>
                 </ScrollArea>
               </div>
             </div>
           ) : (
-            // === VISÃO DE LISTA (TABELA) ===
-            <div className="flex flex-col h-full gap-4 animate-in slide-in-from-left-4 duration-300">
-              {/* Barra de Busca */}
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por professor, tipo ou horário..."
-                  className="pl-9"
-                  value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                />
-              </div>
-
-              {/* Tabela */}
-              <div className="border rounded-md flex-1 overflow-hidden relative">
-                 <ScrollArea className="h-full">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background z-10">
-                      <TableRow>
-                        <TableHead className="w-[100px]">Data</TableHead>
-                        <TableHead>Horário</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Professores</TableHead>
-                        <TableHead className="text-right">Alunos</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {currentAulas.length > 0 ? (
-                        currentAulas.map((aula, index) => (
-                          <TableRow 
-                            key={index} 
-                            className="cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => handleRowClick(aula)}
-                          >
-                            <TableCell className="font-medium text-xs text-muted-foreground">
-                              {aula.data_aula.substring(0, 5)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                                <span>{aula.horario}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="font-normal text-xs">
-                                {aula.tipo_aula}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="max-w-[180px] truncate text-sm text-muted-foreground">
-                              {aula.professores}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {aula.qtd_alunos}
-                            </TableCell>
-                            <TableCell>
-                              <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                            </TableCell>
+            // === CONTEÚDO DAS ABAS ===
+            <div className="h-full p-6 pt-2">
+              <Tabs value={activeTab} className="h-full flex flex-col">
+                {/* TAB 1: LISTA DE AULAS */}
+                <TabsContent value="aulas" className="h-full mt-0 flex flex-col gap-4 animate-in fade-in-50">
+                  <div className="border rounded-md bg-background flex-1 overflow-hidden shadow-sm">
+                    <ScrollArea className="h-full">
+                      <Table>
+                        <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur-sm z-10">
+                          <TableRow>
+                            <TableHead className="w-[80px]">Hora</TableHead>
+                            <TableHead className="w-[100px]">Data</TableHead>
+                            <TableHead>Tipo</TableHead>
+                            <TableHead>Professores</TableHead>
+                            <TableHead className="text-right">Qtd</TableHead>
+                            <TableHead className="w-[40px]"></TableHead>
                           </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                            Nenhuma aula encontrada.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </div>
+                        </TableHeader>
+                        <TableBody>
+                          {currentAulas.length > 0 ? (
+                            currentAulas.map((aula, index) => (
+                              <TableRow
+                                key={index}
+                                className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                onClick={() => setSelectedAula(aula)}
+                              >
+                                <TableCell className="font-medium font-mono text-xs">{aula.horario}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {aula.data_aula.substring(0, 5)}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="font-normal text-[10px] uppercase tracking-wide">
+                                    {aula.tipo_aula}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-sm max-w-[200px] truncate text-muted-foreground">
+                                  {aula.professores}
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-sm">{aula.qtd_alunos}</TableCell>
+                                <TableCell>
+                                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                                Nenhuma aula encontrada para o filtro.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </div>
 
-              {/* Paginação */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-end space-x-2 py-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                  >
-                    Anterior
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    Pág {currentPage} de {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                  >
-                    Próxima
-                  </Button>
-                </div>
-              )}
+                  {/* Paginação */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between shrink-0 bg-background p-2 rounded-lg border">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        Página {currentPage} de {totalPages}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* TAB 2: LISTA DE ALUNOS */}
+                <TabsContent value="alunos" className="h-full mt-0 animate-in fade-in-50">
+                  <div className="h-full border rounded-md bg-background shadow-sm overflow-hidden flex flex-col">
+                    <div className="p-3 border-b bg-muted/10 text-xs font-medium text-muted-foreground flex justify-between">
+                      <span>NOME DO ALUNO</span>
+                      <span>TOTAL: {sortedUniqueStudents.length}</span>
+                    </div>
+
+                    <ScrollArea className="flex-1">
+                      {sortedUniqueStudents.length > 0 ? (
+                        <div className="divide-y">
+                          {sortedUniqueStudents.map((aluno, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors">
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <User className="w-4 h-4" />
+                              </div>
+                              <span className="text-sm font-medium">{aluno}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                          <Users className="w-10 h-10 mb-2 opacity-20" />
+                          <p>Nenhum aluno encontrado.</p>
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </div>
