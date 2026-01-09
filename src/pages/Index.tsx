@@ -251,6 +251,9 @@ const Index = () => {
       listaAlunos: aula.lista_alunos,
     }));
 
+  // [NOVO] Cálculo da Porcentagem de Alertas
+  const percentAlertas = totalAulas > 0 ? ((aulasEmAlerta.length / totalAulas) * 100).toFixed(0) : 0;
+
   const horarioMap = new Map<string, { total: number; count: number }>();
   processedData.forEach((aula) => {
     if (!aula.horario) return;
@@ -422,7 +425,8 @@ const Index = () => {
               value={aulasEmAlerta.length}
               icon={<AlertTriangle className="w-6 h-6" />}
               status={aulasEmAlerta.length > 0 ? "danger" : "success"}
-              subtitle={aulasEmAlerta.length > 0 ? "Precisam de atenção" : "Nenhum alerta!"}
+              // [ATUALIZAÇÃO] Subtítulo com Porcentagem
+              subtitle={aulasEmAlerta.length > 0 ? `${percentAlertas}% do total requer atenção` : "Nenhum alerta!"}
               delay={200}
             />
           </div>
@@ -432,7 +436,6 @@ const Index = () => {
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div />
-            {/* Atualização: Passando dateRange para o modal */}
             <FullHistoryDialog aulas={processedData} dateRange={dateRange} />
           </div>
           <AlertList aulas={aulasEmAlerta as any} />
