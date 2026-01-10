@@ -134,6 +134,7 @@ const Index = () => {
       const isVip = raw.tipo_aula?.toUpperCase().includes("VIP");
 
       if (isVip) {
+        // VIP: Meta 2
         if (razao < 2) {
           status = "🔴 Prejuízo";
           cor = "#ef4444";
@@ -142,8 +143,9 @@ const Index = () => {
           cor = "#22c55e";
         }
       } else {
+        // GERAL: Meta 3
         if (razao < 3) {
-          status = "🔴 Baixa Adesão";
+          status = "🔴 Prejuízo"; // Alterado de "Baixa Adesão" para "Prejuízo"
           cor = "#ef4444";
         } else if (razao >= 3 && razao < 5) {
           status = "🟡 Normal";
@@ -332,7 +334,6 @@ const Index = () => {
 
         {/* === ZONA DE FILTROS (NOVA UI/UX) === */}
         <div className="mb-6 flex flex-wrap items-center gap-3 animate-fade-in relative z-20">
-          {/* Label Visual */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground mr-1">
             <Filter className="w-4 h-4" />
             <span className="hidden sm:inline">Filtrar por:</span>
@@ -350,7 +351,6 @@ const Index = () => {
               <ChevronDown className={`w-3 h-3 transition-transform ${openFilter === "type" ? "rotate-180" : ""}`} />
             </Button>
 
-            {/* Dropdown Content */}
             {openFilter === "type" && (
               <div className="absolute top-10 left-0 w-[200px] p-2 bg-popover rounded-lg border shadow-lg animate-in fade-in zoom-in-95 z-50">
                 <div className="flex flex-col gap-1">
@@ -400,7 +400,6 @@ const Index = () => {
               <ChevronDown className={`w-3 h-3 transition-transform ${openFilter === "time" ? "rotate-180" : ""}`} />
             </Button>
 
-            {/* Dropdown Content */}
             {openFilter === "time" && (
               <div className="absolute top-10 left-0 w-[280px] p-3 bg-popover rounded-lg border shadow-lg animate-in fade-in zoom-in-95 z-50">
                 <div className="space-y-2">
@@ -438,7 +437,7 @@ const Index = () => {
             )}
           </div>
 
-          {/* 3. Botão Limpar Filtros (Condicional) */}
+          {/* 3. Botão Limpar Filtros */}
           {hasActiveFilters && (
             <Button
               variant="ghost"
@@ -451,7 +450,6 @@ const Index = () => {
             </Button>
           )}
 
-          {/* Backdrop Invisível para fechar ao clicar fora */}
           {openFilter && <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenFilter(null)} />}
         </div>
 
