@@ -93,6 +93,9 @@ const Index = () => {
     rawData.forEach((row) => {
       if (!row.data_aula) return;
 
+      // Excluir "Aulão" dos indicadores e gráficos
+      if (row.tipo_aula?.toLowerCase() === "aulão") return;
+
       let rowDate: Date;
       try {
         rowDate = parse(row.data_aula, "dd/MM/yyyy", new Date());

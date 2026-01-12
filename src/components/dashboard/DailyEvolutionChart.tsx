@@ -140,6 +140,9 @@ export function DailyEvolutionChart({ data, isLoading, classType, selectedTime }
     data.forEach((row) => {
       if (!row.data_aula || !row.horario) return;
 
+      // Excluir "Aulão" dos gráficos
+      if (row.tipo_aula?.toLowerCase() === "aulão") return;
+
       // Filtro de Tipo
       if (classType !== "all" && row.tipo_aula !== classType) {
         return;
