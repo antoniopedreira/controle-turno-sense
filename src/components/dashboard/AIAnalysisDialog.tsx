@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, TrendingUp, TrendingDown, Bot, CheckCircle2 } from "lucide-react";
+import { Sparkles, TrendingUp, TrendingDown, Bot, CheckCircle2, AlertTriangle, Clock, Crown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 interface AulaData {
   data_aula: string;
@@ -23,74 +24,114 @@ interface AulaData {
 }
 
 interface AIAnalysisDialogProps {
-  data: AulaData[]; // Recebe os dados JÁ filtrados pela página Index
+  data: AulaData[];
 }
 
 export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   // --- 1. MOTOR DE ANÁLISE ---
-  // Agora usamos 'data' diretamente, pois ele já vem filtrado do Index.tsx
   const analysis = useMemo(() => {
     if (!data || data.length === 0) return null;
 
-    // Ordena por performance (Razão Aluno/Prof)
-    const sortedByPerformance = [...data].sort((a, b) => b.razao_aluno_prof - a.razao_aluno_prof);
-
-    const bestClass = sortedByPerformance[0];
-    const worstClass = sortedByPerformance[sortedByPerformance.length - 1];
-
-    // Cálculos de média
+    // A. Estatísticas Gerais
     const avgRatio = data.reduce((acc, curr) => acc + curr.razao_aluno_prof, 0) / data.length;
-
-    // Contagem de Status
     const prejuizoCount = data.filter((a) => a.razao_aluno_prof < 2).length;
     const superlotadasCount = data.filter((a) => a.razao_aluno_prof > 4).length;
 
+    // B. Agrupamento por Horário (Para média real do horário)
+    const timeMap = new Map<string, { totalRatio: number; count: number }>();
+
+    // C. Contagem de Horas por Professor
+    const profMap = new Map<string, number>();
+
+    data.forEach((aula) => {
+      // B. Horários
+      const currentH = timeMap.get(aula.horario) || { totalRatio: 0, count: 0 };
+      timeMap.set(aula.horario, {
+        totalRatio: currentH.totalRatio + aula.razao_aluno_prof,
+        count: currentH.count + 1,
+      });
+
+      // C. Professores
+      if (aula.professores) {
+        const nomes = aula.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0);
+        nomes.forEach((nome) => {
+          let cleanName = nome.trim();
+          if (cleanName === "Peu") cleanName = "Peu Beck"; // Normalização
+          const currentP = profMap.get(cleanName) || 0;
+          profMap.set(cleanName, currentP + 1);
+        });
+      }
+    });
+
+    // Ranking de Horários (Média)
+    const timeStats = Array.from(timeMap.entries())
+      .map(([horario, stats]) => ({
+        horario,
+        media: stats.totalRatio / stats.count,
+      }))
+      .sort((a, b) => b.media - a.media);
+
+    const bestTime = timeStats[0];
+    const worstTime = timeStats[timeStats.length - 1];
+
+    // Top Professor
+    const topProfessor = Array.from(profMap.entries()).sort((a, b) => b[1] - a[1])[0]; // [Nome, Qtd]
+
+    // Melhores/Piores Aulas Individuais
+    const sortedByPerformance = [...data].sort((a, b) => b.razao_aluno_prof - a.razao_aluno_prof);
+
     return {
-      bestClass,
-      worstClass,
       avgRatio,
       totalAulas: data.length,
       prejuizoCount,
       superlotadasCount,
+      bestTime, // Objeto {horario, media}
+      worstTime, // Objeto {horario, media}
+      topProfessor: topProfessor ? { nome: topProfessor[0], aulas: topProfessor[1] } : null,
+      bestClassIndividual: sortedByPerformance[0], // Para o card
+      worstClassIndividual: sortedByPerformance[sortedByPerformance.length - 1], // Para o card
     };
   }, [data]);
 
-  // --- 2. GERADOR DE INSIGHTS (Lógica Local) ---
+  // --- 2. GERADOR DE TEXTO (Limpo e Analítico) ---
   const aiText = useMemo(() => {
-    if (!analysis) return "Não há dados suficientes para gerar uma análise neste período.";
+    if (!analysis) return "Não há dados suficientes para gerar uma análise.";
 
-    const { avgRatio, totalAulas, prejuizoCount, superlotadasCount, bestClass, worstClass } = analysis;
+    const { avgRatio, totalAulas, prejuizoCount, bestTime, worstTime, topProfessor } = analysis;
+
     let text = "";
 
-    // Parágrafo 1: Visão Geral
-    text += `Analisei **${totalAulas} aulas** no período selecionado. `;
+    // Introdução
+    text += `Com base nos ${totalAulas} registros analisados, a média global de ocupação é de ${avgRatio.toFixed(1)} alunos por professor. `;
+
     if (avgRatio < 2.5) {
-      text += `O cenário requer atenção imediata: a média geral é de **${avgRatio.toFixed(1)} alunos/prof**, o que indica ociosidade na grade. `;
+      text += `Este índice está abaixo do ideal, indicando capacidade ociosa significativa na grade. `;
     } else if (avgRatio > 4) {
-      text += `Performance excelente! A média de **${avgRatio.toFixed(1)} alunos/prof** sugere alta demanda e possível necessidade de expansão. `;
+      text += `O índice aponta alta demanda, sugerindo que a grade atual está próxima do limite. `;
     } else {
-      text += `A operação está saudável, com média de **${avgRatio.toFixed(1)} alunos/prof**, dentro da meta esperada. `;
+      text += `A operação demonstra equilíbrio saudável. `;
     }
 
     text += "\n\n";
 
-    // Parágrafo 2: Pontos Críticos
+    // Análise de Horários (Foco na dor)
+    text += `Em relação aos turnos, o horário das ${worstTime.horario} requer atenção prioritária. `;
+    text += `Ele apresenta a menor média de adesão (${worstTime.media.toFixed(1)} alunos/prof), sendo o principal gargalo de eficiência atual. `;
+    text += `Em contrapartida, o horário das ${bestTime.horario} é o mais eficiente, com média de ${bestTime.media.toFixed(1)}.`;
+
+    text += "\n\n";
+
+    // Dados Financeiros/Operacionais
     if (prejuizoCount > 0) {
-      text += `⚠️ **Atenção:** Detectei **${prejuizoCount} aulas** operando no vermelho (razão < 2). Isso representa ${((prejuizoCount / totalAulas) * 100).toFixed(0)}% da grade deste recorte. `;
-    }
-    if (superlotadasCount > 0) {
-      text += `🚀 **Oportunidade:** Temos **${superlotadasCount} turmas superlotadas**. Considere abrir horários paralelos ou aumentar o ticket destas sessões. `;
+      text += `Foram identificadas ${prejuizoCount} aulas operando na zona de prejuízo (razão menor que 2). `;
+      text += `Recomendo revisão imediata da estratégia para estas sessões específicas para evitar queima de caixa.`;
     }
 
-    text += "\n\n";
-
-    // Parágrafo 3: Destaques Específicos
-    text += `O destaque positivo vai para o horário das **${bestClass.horario} (${bestClass.tipo_aula})** com a equipe **${bestClass.professores}**, que atingiu a máxima eficiência. `;
-
-    if (worstClass.razao_aluno_prof < 2) {
-      text += `Por outro lado, sugiro revisar a estratégia para as **${worstClass.horario}**, especificamente as aulas de **${worstClass.tipo_aula}**, que tiveram a menor adesão.`;
+    // Destaque Professor
+    if (topProfessor) {
+      text += `\n\nNo corpo docente, ${topProfessor.nome} lidera o volume de atividades, acumulando ${topProfessor.aulas} horas de aula neste período.`;
     }
 
     return text;
@@ -105,123 +146,107 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-xl border-slate-200 dark:border-slate-800">
-        {/* HEADER SIMPLIFICADO (Sem filtros internos) */}
-        <div className="p-6 border-b bg-background/50 backdrop-blur supports-[backdrop-filter]:bg-background/20">
+      {/* MUDANÇA VISUAL: Fundo Dark e Bordas Dark */}
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-background border-border text-foreground shadow-2xl">
+        {/* HEADER */}
+        <div className="p-6 border-b border-border bg-muted/10">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-2xl text-primary font-bold">
-              <Bot className="w-7 h-7 text-violet-600" />
+            <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-foreground">
+              <Bot className="w-7 h-7 text-violet-500" />
               Inteligência de Turnos
             </DialogTitle>
-            <DialogDescription className="text-base mt-2">
-              Análise gerada automaticamente com base no <strong>período selecionado no dashboard</strong>.
+            <DialogDescription className="text-muted-foreground text-base mt-2">
+              Análise gerada automaticamente com base no período selecionado.
             </DialogDescription>
           </DialogHeader>
         </div>
 
         {/* CONTEÚDO */}
-        <ScrollArea className="flex-1 p-6 md:p-8">
+        <ScrollArea className="flex-1 p-6 md:p-8 bg-background">
           {analysis ? (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {/* BLOCO DE INSIGHTS DA IA */}
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 p-6 md:p-8 rounded-2xl shadow-xl border border-slate-700 relative overflow-hidden group">
-                <div className="absolute -top-10 -right-10 p-4 opacity-5 group-hover:opacity-10 transition-opacity duration-500">
-                  <Bot className="w-48 h-48" />
-                </div>
-
+              {/* BLOCO DE TEXTO DA ANÁLISE (Estilo Dark Clean) */}
+              <div className="bg-card border border-border p-6 md:p-8 rounded-xl shadow-sm relative overflow-hidden">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-violet-500/20 rounded-lg">
-                    <Sparkles className="w-5 h-5 text-violet-300" />
+                  <div className="p-2 bg-violet-500/10 rounded-lg">
+                    <Sparkles className="w-5 h-5 text-violet-500" />
                   </div>
-                  <h3 className="text-xl font-semibold text-white">Diagnóstico do Período</h3>
+                  <h3 className="text-lg font-semibold text-card-foreground">Diagnóstico do Período</h3>
                 </div>
 
-                <p className="text-slate-300 leading-relaxed whitespace-pre-line relative z-10 text-base md:text-lg font-light">
-                  {aiText}
-                </p>
+                <p className="text-muted-foreground leading-relaxed whitespace-pre-line text-base">{aiText}</p>
               </div>
 
-              {/* CARDS DE DESTAQUE */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Melhor Aula */}
-                <Card className="border-0 shadow-md bg-green-50 dark:bg-green-900/10 ring-1 ring-green-100 dark:ring-green-900 overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-bl-full" />
+              {/* GRID DE KPIs ANALÍTICOS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Melhor Horário (Média) */}
+                <Card className="bg-card border-border shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-green-700 dark:text-green-400 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4" />
-                      Melhor Performance
+                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-green-500 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Melhor Horário
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-green-700 dark:text-green-300">
-                        {analysis.bestClass.razao_aluno_prof.toFixed(1)}
-                      </span>
-                      <span className="text-sm font-medium text-green-600/80">alunos/prof</span>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-green-200 dark:border-green-800/50">
-                      <div className="flex justify-between items-center mb-1">
-                        <Badge variant="outline" className="bg-white/50 border-green-200 text-green-700">
-                          {analysis.bestClass.tipo_aula}
-                        </Badge>
-                        <span className="text-sm font-mono text-green-800 font-medium">
-                          {analysis.bestClass.horario}
-                        </span>
-                      </div>
-                      <p className="text-sm text-green-800/80 truncate">Profs: {analysis.bestClass.professores}</p>
-                      <p className="text-xs text-green-800/60 mt-1">Data: {analysis.bestClass.data_aula}</p>
-                    </div>
+                    <div className="text-2xl font-bold text-card-foreground">{analysis.bestTime.horario}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Média de {analysis.bestTime.media.toFixed(1)} alunos
+                    </p>
                   </CardContent>
                 </Card>
 
-                {/* Pior Aula */}
-                <Card className="border-0 shadow-md bg-red-50 dark:bg-red-900/10 ring-1 ring-red-100 dark:ring-red-900 overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-bl-full" />
+                {/* 2. Pior Horário (Média) */}
+                <Card className="bg-card border-red-500/30 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-1 h-full bg-red-500" />
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-red-700 dark:text-red-400 flex items-center gap-2">
-                      <TrendingDown className="w-4 h-4" />
-                      Requer Atenção
+                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-red-500 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      Atenção Necessária
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-red-700 dark:text-red-300">
-                        {analysis.worstClass.razao_aluno_prof.toFixed(1)}
-                      </span>
-                      <span className="text-sm font-medium text-red-600/80">alunos/prof</span>
-                    </div>
+                    <div className="text-2xl font-bold text-card-foreground">{analysis.worstTime.horario}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Baixa média de {analysis.worstTime.media.toFixed(1)} alunos
+                    </p>
+                  </CardContent>
+                </Card>
 
-                    <div className="mt-4 pt-4 border-t border-red-200 dark:border-red-800/50">
-                      <div className="flex justify-between items-center mb-1">
-                        <Badge variant="outline" className="bg-white/50 border-red-200 text-red-700">
-                          {analysis.worstClass.tipo_aula}
-                        </Badge>
-                        <span className="text-sm font-mono text-red-800 font-medium">
-                          {analysis.worstClass.horario}
-                        </span>
-                      </div>
-                      <p className="text-sm text-red-800/80 truncate">Profs: {analysis.worstClass.professores}</p>
-                      <p className="text-xs text-red-800/60 mt-1">Data: {analysis.worstClass.data_aula}</p>
+                {/* 3. Top Professor */}
+                <Card className="bg-card border-border shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-yellow-500 flex items-center gap-2">
+                      <Crown className="w-4 h-4" />
+                      Mais Aulas
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-card-foreground truncate">
+                      {analysis.topProfessor?.nome || "-"}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {analysis.topProfessor?.aulas || 0} horas registradas
+                    </p>
                   </CardContent>
                 </Card>
               </div>
+
+              <Separator className="bg-border" />
 
               <div className="flex justify-center pb-4">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" />
-                  Análise baseada em {analysis.totalAulas} aulas do período.
+                  Dados processados a partir de {analysis.totalAulas} aulas filtradas.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed">
-              <div className="p-4 bg-muted rounded-full mb-4">
+            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground bg-muted/10 rounded-xl border border-dashed border-muted">
+              <div className="p-4 bg-muted/20 rounded-full mb-4">
                 <Bot className="w-8 h-8 opacity-50" />
               </div>
               <h3 className="font-semibold text-lg mb-1">Aguardando dados</h3>
-              <p className="text-sm">Selecione um período com aulas no dashboard para ver a análise.</p>
+              <p className="text-sm">Selecione um período com aulas no dashboard.</p>
             </div>
           )}
         </ScrollArea>
