@@ -9,6 +9,7 @@ import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ProfessorRanking, ProfessorStats } from "@/components/dashboard/ProfessorRanking";
 import { DailyEvolutionChart } from "@/components/dashboard/DailyEvolutionChart";
 import { FullHistoryDialog } from "@/components/dashboard/FullHistoryDialog";
+import { AIAnalysisDialog } from "@/components/dashboard/AIAnalysisDialog";
 import { startOfMonth, endOfMonth, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -148,7 +149,7 @@ const Index = () => {
       } else {
         // GERAL: Meta 3
         if (razao < 3) {
-          status = "🔴 Prejuízo"; // Alterado de "Baixa Adesão" para "Prejuízo"
+          status = "🔴 Prejuízo";
           cor = "#ef4444";
         } else if (razao >= 3 && razao < 5) {
           status = "🟡 Normal";
@@ -340,6 +341,11 @@ const Index = () => {
 
         {/* === ZONA DE FILTROS (NOVA UI/UX) === */}
         <div className="mb-6 flex flex-wrap items-center gap-3 animate-fade-in relative z-20">
+          {/* Botão de Análise IA (INTEGRAÇÃO FEITA) */}
+          <AIAnalysisDialog data={dashboardData} />
+
+          <Separator orientation="vertical" className="h-6 mx-2 hidden sm:block" />
+
           <div className="flex items-center gap-2 text-sm text-muted-foreground mr-1">
             <Filter className="w-4 h-4" />
             <span className="hidden sm:inline">Filtrar por:</span>
