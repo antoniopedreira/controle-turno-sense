@@ -55,17 +55,24 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
   const [currentPage, setCurrentPage] = useState(1);
   const [activeTab, setActiveTab] = useState("aulas");
 
-  // --- LÓGICA DE FILTRO SEGURA ---
+  // --- LÓGICA DE FILTRO E ORDENAÇÃO (MAIS RECENTE PRIMEIRO) ---
   const filteredAulas = useMemo(() => {
-    return aulas.filter((aula) => {
-      const termo = searchTerm.toLowerCase();
-      // Verificações de segurança para evitar erro em null/undefined
-      const profs = aula.professores ? String(aula.professores).toLowerCase() : "";
-      const tipo = aula.tipo_aula ? String(aula.tipo_aula).toLowerCase() : "";
-      const hora = aula.horario ? String(aula.horario).toLowerCase() : "";
+    return aulas
+      .filter((aula) => {
+        const termo = searchTerm.toLowerCase();
+        // Verificações de segurança para evitar erro em null/undefined
+        const profs = aula.professores ? String(aula.professores).toLowerCase() : "";
+        const tipo = aula.tipo_aula ? String(aula.tipo_aula).toLowerCase() : "";
+        const hora = aula.horario ? String(aula.horario).toLowerCase() : "";
 
-      return profs.includes(termo) || tipo.includes(termo) || hora.includes(termo);
-    });
+        return profs.includes(termo) || tipo.includes(termo) || hora.includes(termo);
+      })
+      // Ordenar pela data mais recente
+      .sort((a, b) => {
+        const dateA = a.data_iso ? new Date(a.data_iso).getTime() : 0;
+        const dateB = b.data_iso ? new Date(b.data_iso).getTime() : 0;
+        return dateB - dateA;
+      });
   }, [aulas, searchTerm]);
 
   const itemsPerPage = 8;
@@ -270,17 +277,17 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
             <div className="h-full p-6 pt-2">
               <Tabs value={activeTab} className="h-full flex flex-col">
                 <TabsContent value="aulas" className="h-full mt-0 flex flex-col gap-4 animate-in fade-in-50">
-                  <div className="border rounded-md bg-background flex-1 overflow-hidden shadow-sm">
+                  <div className="rounded-md bg-background flex-1 overflow-hidden">
                     <ScrollArea className="h-full">
                       <Table>
-                        <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur-sm z-10">
-                          <TableRow>
-                            <TableHead className="w-[60px]">Hora</TableHead>
-                            <TableHead className="w-[80px]">Data</TableHead>
-                            <TableHead className="w-[100px]">Tipo</TableHead>
-                            <TableHead className="w-[120px]">Status</TableHead>
-                            <TableHead>Professores</TableHead>
-                            <TableHead className="text-right">Qtd</TableHead>
+                        <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+                          <TableRow className="border-b border-border/50 hover:bg-transparent">
+                            <TableHead className="w-[60px] text-muted-foreground font-medium">Hora</TableHead>
+                            <TableHead className="w-[80px] text-muted-foreground font-medium">Data</TableHead>
+                            <TableHead className="w-[100px] text-muted-foreground font-medium">Tipo</TableHead>
+                            <TableHead className="w-[120px] text-muted-foreground font-medium">Status</TableHead>
+                            <TableHead className="text-muted-foreground font-medium">Professores</TableHead>
+                            <TableHead className="text-right text-muted-foreground font-medium">Qtd</TableHead>
                             <TableHead className="w-[40px]"></TableHead>
                           </TableRow>
                         </TableHeader>
@@ -289,29 +296,31 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                             currentAulas.map((aula, index) => (
                               <TableRow
                                 key={index}
-                                className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                className="cursor-pointer hover:bg-muted/30 transition-colors border-b border-border/30"
                                 onClick={() => setSelectedAula(aula)}
                               >
-                                <TableCell className="font-medium font-mono text-xs">{aula.horario}</TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
+                                <TableCell className="font-medium font-mono text-sm">{aula.horario}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
                                   {aula.data_aula.substring(0, 5)}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant="outline" className="font-normal text-[10px] uppercase tracking-wide">
+                                  <Badge variant="outline" className="font-medium text-[11px] uppercase tracking-wide bg-muted/50 border-border/50">
                                     {aula.tipo_aula}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
                                   <Badge
-                                    variant="outline"
-                                    className="text-[10px] whitespace-nowrap px-2 py-0.5 border"
+                                    className="text-[11px] whitespace-nowrap px-2.5 py-0.5 font-medium border-0"
                                     style={{
-                                      borderColor: aula.cor_indicadora,
+                                      backgroundColor: `${aula.cor_indicadora}20`,
                                       color: aula.cor_indicadora,
-                                      backgroundColor: `${aula.cor_indicadora}10`,
                                     }}
                                   >
-                                    {aula.status_aula}
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full mr-1.5 inline-block"
+                                      style={{ backgroundColor: aula.cor_indicadora }}
+                                    />
+                                    {aula.status_aula?.replace(/🔴|🟡|🟢|⚪\s*/g, "").trim()}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-sm max-w-[180px] truncate text-muted-foreground">
@@ -324,7 +333,7 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                               </TableRow>
                             ))
                           ) : (
-                            <TableRow>
+                            <TableRow className="hover:bg-transparent">
                               <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                                 Nenhuma aula encontrada para o filtro.
                               </TableCell>
@@ -336,16 +345,17 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                   </div>
 
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-between shrink-0 bg-background p-2 rounded-lg border">
+                    <div className="flex items-center justify-between shrink-0 bg-muted/30 p-3 rounded-lg">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handlePageChange(currentPage - 1)}
                         disabled={currentPage === 1}
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         Anterior
                       </Button>
-                      <span className="text-xs text-muted-foreground font-medium">
+                      <span className="text-sm text-muted-foreground font-medium">
                         Página {currentPage} de {totalPages}
                       </span>
                       <Button
@@ -353,6 +363,7 @@ export function FullHistoryDialog({ aulas, dateRange }: FullHistoryDialogProps) 
                         size="sm"
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         Próxima
                       </Button>
