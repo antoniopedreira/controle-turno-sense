@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, TrendingUp, TrendingDown, Bot, CheckCircle2, AlertTriangle, Clock, Crown } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
@@ -48,7 +47,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
     const alertsList = data.filter(isAlert);
     const alertsCount = alertsList.length;
 
-    // B. Mapeamento de Horários (Foco em onde estão os problemas)
+    // B. Mapeamento de Horários
     const timeMap = new Map<string, { totalRatio: number; count: number; alertCount: number }>();
     const profMap = new Map<string, number>();
 
@@ -58,7 +57,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
       timeMap.set(aula.horario, {
         totalRatio: currentH.totalRatio + aula.razao_aluno_prof,
         count: currentH.count + 1,
-        alertCount: currentH.alertCount + (isAlert(aula) ? 1 : 0), // Conta quantos alertas existem neste horário
+        alertCount: currentH.alertCount + (isAlert(aula) ? 1 : 0),
       });
 
       // Professores
@@ -83,8 +82,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
     // Melhor Horário (Maior Média)
     const bestTime = [...timeStats].sort((a, b) => b.media - a.media)[0];
 
-    // Horário Crítico: Aquele com MAIS ALERTAS absolutos.
-    // Se empatar, o que tiver a pior média ganha.
+    // Horário Crítico (Mais Alertas > Menor Média)
     const criticalTime = [...timeStats].sort((a, b) => {
       if (b.alertCount !== a.alertCount) return b.alertCount - a.alertCount;
       return a.media - b.media;
@@ -112,22 +110,20 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
 
     let text = "";
 
-    // BLOCO 1: Diagnóstico Geral (Regra de Negócio Corrigida)
+    // BLOCO 1
     text += `Com base nos ${totalAulas} registros analisados, a média global é de **${avgRatio.toFixed(1)} alunos por professor**. `;
 
     if (avgRatio < 3.0) {
-      // Ajuste: Abaixo de 3 não é saudável
       text += `Este índice está **abaixo da meta ideal (3.0)**, indicando que a operação ainda não atingiu o ponto de equilíbrio desejado. `;
     } else {
       text += `A operação está **saudável e dentro da meta**, demonstrando boa eficiência na alocação de turmas. `;
     }
     text += "\n\n";
 
-    // BLOCO 2: O GRANDE PROBLEMA (Foco nos Alertas)
+    // BLOCO 2
     if (alertsCount > 0) {
       text += `⚠️ Detectei **${alertsCount} aulas operando na zona de prejuízo ou baixa adesão** (${percentAlerts}% da grade). `;
 
-      // Análise do Horário Crítico
       if (criticalTime.alertCount > 0) {
         text += `A atenção deve ser redobrada no horário das **${criticalTime.horario}**, que concentra **${criticalTime.alertCount} ocorrências negativas**. `;
         text += `Este horário específico apresenta uma média de apenas **${criticalTime.media.toFixed(1)} alunos/prof**, sendo o principal gargalo financeiro do período.`;
@@ -139,7 +135,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
     }
     text += "\n\n";
 
-    // BLOCO 3: Pontos Fortes e Professor
+    // BLOCO 3
     text += `Em contrapartida, o horário das **${bestTime.horario}** é a referência de eficiência, com média de **${bestTime.media.toFixed(1)}**. `;
 
     if (topProfessor) {
@@ -149,11 +145,10 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
     return text;
   }, [analysis]);
 
-  // Função para renderizar texto com Destaque Violeta
+  // Renderizar com destaque colorido
   const renderStyledText = (text: string) => {
     return text.split(/(\*\*.*?\*\*)/).map((part, index) => {
       if (part.startsWith("**") && part.endsWith("**")) {
-        // Remove os asteriscos e aplica estilo
         return (
           <span key={index} className="font-bold text-violet-400">
             {part.slice(2, -2)}
@@ -175,7 +170,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
 
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-background border-border text-foreground shadow-2xl">
         {/* HEADER */}
-        <div className="p-6 border-b border-border bg-muted/10">
+        <div className="p-6 border-b border-border bg-muted/10 shrink-0">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-foreground">
               <Bot className="w-7 h-7 text-violet-500" />
@@ -187,8 +182,9 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
           </DialogHeader>
         </div>
 
-        {/* CONTEÚDO */}
-        <ScrollArea className="flex-1 p-6 md:p-8 bg-background">
+        {/* CONTEÚDO COM SCROLL NATIVO */}
+        {/* Substituímos ScrollArea por div com overflow-y-auto para garantir a barra de rolagem */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-background scrollbar-thin scrollbar-thumb-violet-500/20 scrollbar-track-transparent">
           {analysis ? (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* BLOCO DE TEXTO DA ANÁLISE */}
@@ -200,14 +196,13 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
                   <h3 className="text-lg font-semibold text-card-foreground">Diagnóstico do Período</h3>
                 </div>
 
-                {/* Renderização com Estilo */}
                 <p className="text-muted-foreground leading-relaxed whitespace-pre-line text-base">
                   {renderStyledText(aiText)}
                 </p>
               </div>
 
               {/* GRID DE KPIs ANALÍTICOS */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4">
                 {/* 1. Melhor Horário */}
                 <Card className="bg-card border-border shadow-sm">
                   <CardHeader className="pb-2">
@@ -224,7 +219,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
                   </CardContent>
                 </Card>
 
-                {/* 2. Horário Crítico (Mais Alertas) */}
+                {/* 2. Horário Crítico */}
                 <Card className="bg-card border-red-500/30 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-1 h-full bg-red-500" />
                   <CardHeader className="pb-2">
@@ -278,7 +273,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
               <p className="text-sm">Selecione um período com aulas no dashboard.</p>
             </div>
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
