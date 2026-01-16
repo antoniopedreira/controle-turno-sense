@@ -342,7 +342,7 @@ const Index = () => {
         {/* === ZONA DE FILTROS (NOVA UI/UX) === */}
         <div className="mb-6 flex flex-wrap items-center gap-3 animate-fade-in relative z-20">
           {/* Botão de Análise IA (INTEGRAÇÃO FEITA) */}
-          <AIAnalysisDialog data={dashboardData} />
+          <AIAnalysisDialog data={processedData} />
 
           <Separator orientation="vertical" className="h-6 mx-2 hidden sm:block" />
 
