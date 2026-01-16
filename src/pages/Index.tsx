@@ -260,7 +260,10 @@ const Index = () => {
       tipo: aula.tipo_aula,
       coordenador: aula.coordenador,
       listaAlunos: aula.lista_alunos,
-    }));
+      dataIso: aula.data_iso,
+    }))
+    // Ordenar pela data mais recente
+    .sort((a, b) => new Date(b.dataIso).getTime() - new Date(a.dataIso).getTime());
 
   const percentAlertas = totalAulas > 0 ? ((aulasEmAlerta.length / totalAulas) * 100).toFixed(0) : 0;
 
@@ -507,8 +510,8 @@ const Index = () => {
         <section className="mb-8 space-y-4">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div />
-            {/* Passando dashboardData para mostrar tudo no histórico */}
-            <FullHistoryDialog aulas={dashboardData} dateRange={dateRange} />
+            {/* Passando processedData filtrado para o histórico */}
+            <FullHistoryDialog aulas={processedData} dateRange={dateRange} />
           </div>
           <AlertList aulas={aulasEmAlerta as any} />
         </section>
