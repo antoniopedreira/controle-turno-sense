@@ -36,106 +36,133 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
 
     // A. Estatísticas Gerais
     const avgRatio = data.reduce((acc, curr) => acc + curr.razao_aluno_prof, 0) / data.length;
-    const prejuizoCount = data.filter((a) => a.razao_aluno_prof < 2).length;
-    const superlotadasCount = data.filter((a) => a.razao_aluno_prof > 4).length;
 
-    // B. Agrupamento por Horário (Para média real do horário)
-    const timeMap = new Map<string, { totalRatio: number; count: number }>();
+    // LÓGICA DE ALERTA (Sincronizada com o Dashboard)
+    // VIP < 2 = Ruim
+    // Geral < 3 = Ruim
+    const isAlert = (a: AulaData) => {
+      const isVip = a.tipo_aula.toUpperCase().includes("VIP");
+      return isVip ? a.razao_aluno_prof < 2 : a.razao_aluno_prof < 3;
+    };
 
-    // C. Contagem de Horas por Professor
+    const alertsList = data.filter(isAlert);
+    const alertsCount = alertsList.length;
+
+    // B. Mapeamento de Horários (Foco em onde estão os problemas)
+    const timeMap = new Map<string, { totalRatio: number; count: number; alertCount: number }>();
     const profMap = new Map<string, number>();
 
     data.forEach((aula) => {
-      // B. Horários
-      const currentH = timeMap.get(aula.horario) || { totalRatio: 0, count: 0 };
+      // Horários
+      const currentH = timeMap.get(aula.horario) || { totalRatio: 0, count: 0, alertCount: 0 };
       timeMap.set(aula.horario, {
         totalRatio: currentH.totalRatio + aula.razao_aluno_prof,
         count: currentH.count + 1,
+        alertCount: currentH.alertCount + (isAlert(aula) ? 1 : 0), // Conta quantos alertas existem neste horário
       });
 
-      // C. Professores
+      // Professores
       if (aula.professores) {
         const nomes = aula.professores.split(/,\s*|\s+e\s+/).filter((p) => p.trim().length > 0);
         nomes.forEach((nome) => {
           let cleanName = nome.trim();
-          if (cleanName === "Peu") cleanName = "Peu Beck"; // Normalização
+          if (cleanName === "Peu") cleanName = "Peu Beck";
           const currentP = profMap.get(cleanName) || 0;
           profMap.set(cleanName, currentP + 1);
         });
       }
     });
 
-    // Ranking de Horários (Média)
-    const timeStats = Array.from(timeMap.entries())
-      .map(([horario, stats]) => ({
-        horario,
-        media: stats.totalRatio / stats.count,
-      }))
-      .sort((a, b) => b.media - a.media);
+    // Ranking de Horários
+    const timeStats = Array.from(timeMap.entries()).map(([horario, stats]) => ({
+      horario,
+      media: stats.totalRatio / stats.count,
+      alertCount: stats.alertCount,
+    }));
 
-    const bestTime = timeStats[0];
-    const worstTime = timeStats[timeStats.length - 1];
+    // Melhor Horário (Maior Média)
+    const bestTime = [...timeStats].sort((a, b) => b.media - a.media)[0];
+
+    // Horário Crítico: Aquele com MAIS ALERTAS absolutos.
+    // Se empatar, o que tiver a pior média ganha.
+    const criticalTime = [...timeStats].sort((a, b) => {
+      if (b.alertCount !== a.alertCount) return b.alertCount - a.alertCount;
+      return a.media - b.media;
+    })[0];
 
     // Top Professor
-    const topProfessor = Array.from(profMap.entries()).sort((a, b) => b[1] - a[1])[0]; // [Nome, Qtd]
-
-    // Melhores/Piores Aulas Individuais
-    const sortedByPerformance = [...data].sort((a, b) => b.razao_aluno_prof - a.razao_aluno_prof);
+    const topProfessor = Array.from(profMap.entries()).sort((a, b) => b[1] - a[1])[0];
 
     return {
       avgRatio,
       totalAulas: data.length,
-      prejuizoCount,
-      superlotadasCount,
-      bestTime, // Objeto {horario, media}
-      worstTime, // Objeto {horario, media}
+      alertsCount,
+      percentAlerts: ((alertsCount / data.length) * 100).toFixed(0),
+      bestTime,
+      criticalTime,
       topProfessor: topProfessor ? { nome: topProfessor[0], aulas: topProfessor[1] } : null,
-      bestClassIndividual: sortedByPerformance[0], // Para o card
-      worstClassIndividual: sortedByPerformance[sortedByPerformance.length - 1], // Para o card
     };
   }, [data]);
 
-  // --- 2. GERADOR DE TEXTO (Limpo e Analítico) ---
+  // --- 2. GERADOR DE TEXTO ---
   const aiText = useMemo(() => {
-    if (!analysis) return "Não há dados suficientes para gerar uma análise.";
+    if (!analysis) return "Não há dados suficientes.";
 
-    const { avgRatio, totalAulas, prejuizoCount, bestTime, worstTime, topProfessor } = analysis;
+    const { avgRatio, totalAulas, alertsCount, percentAlerts, bestTime, criticalTime, topProfessor } = analysis;
 
     let text = "";
 
-    // Introdução
-    text += `Com base nos ${totalAulas} registros analisados, a média global de ocupação é de ${avgRatio.toFixed(1)} alunos por professor. `;
+    // BLOCO 1: Diagnóstico Geral (Regra de Negócio Corrigida)
+    text += `Com base nos ${totalAulas} registros analisados, a média global é de **${avgRatio.toFixed(1)} alunos por professor**. `;
 
-    if (avgRatio < 2.5) {
-      text += `Este índice está abaixo do ideal, indicando capacidade ociosa significativa na grade. `;
-    } else if (avgRatio > 4) {
-      text += `O índice aponta alta demanda, sugerindo que a grade atual está próxima do limite. `;
+    if (avgRatio < 3.0) {
+      // Ajuste: Abaixo de 3 não é saudável
+      text += `Este índice está **abaixo da meta ideal (3.0)**, indicando que a operação ainda não atingiu o ponto de equilíbrio desejado. `;
     } else {
-      text += `A operação demonstra equilíbrio saudável. `;
+      text += `A operação está **saudável e dentro da meta**, demonstrando boa eficiência na alocação de turmas. `;
     }
-
     text += "\n\n";
 
-    // Análise de Horários (Foco na dor)
-    text += `Em relação aos turnos, o horário das ${worstTime.horario} requer atenção prioritária. `;
-    text += `Ele apresenta a menor média de adesão (${worstTime.media.toFixed(1)} alunos/prof), sendo o principal gargalo de eficiência atual. `;
-    text += `Em contrapartida, o horário das ${bestTime.horario} é o mais eficiente, com média de ${bestTime.media.toFixed(1)}.`;
+    // BLOCO 2: O GRANDE PROBLEMA (Foco nos Alertas)
+    if (alertsCount > 0) {
+      text += `⚠️ Detectei **${alertsCount} aulas operando na zona de prejuízo ou baixa adesão** (${percentAlerts}% da grade). `;
 
+      // Análise do Horário Crítico
+      if (criticalTime.alertCount > 0) {
+        text += `A atenção deve ser redobrada no horário das **${criticalTime.horario}**, que concentra **${criticalTime.alertCount} ocorrências negativas**. `;
+        text += `Este horário específico apresenta uma média de apenas **${criticalTime.media.toFixed(1)} alunos/prof**, sendo o principal gargalo financeiro do período.`;
+      } else {
+        text += `Esses alertas estão distribuídos pela grade, sem concentração em um único horário específico.`;
+      }
+    } else {
+      text += `✅ Excelente! Não detectei nenhuma aula operando abaixo da meta mínima neste período.`;
+    }
     text += "\n\n";
 
-    // Dados Financeiros/Operacionais
-    if (prejuizoCount > 0) {
-      text += `Foram identificadas ${prejuizoCount} aulas operando na zona de prejuízo (razão menor que 2). `;
-      text += `Recomendo revisão imediata da estratégia para estas sessões específicas para evitar queima de caixa.`;
-    }
+    // BLOCO 3: Pontos Fortes e Professor
+    text += `Em contrapartida, o horário das **${bestTime.horario}** é a referência de eficiência, com média de **${bestTime.media.toFixed(1)}**. `;
 
-    // Destaque Professor
     if (topProfessor) {
-      text += `\n\nNo corpo docente, ${topProfessor.nome} lidera o volume de atividades, acumulando ${topProfessor.aulas} horas de aula neste período.`;
+      text += `No corpo docente, **${topProfessor.nome}** lidera o volume de atividades com **${topProfessor.aulas} horas** registradas.`;
     }
 
     return text;
   }, [analysis]);
+
+  // Função para renderizar texto com Destaque Violeta
+  const renderStyledText = (text: string) => {
+    return text.split(/(\*\*.*?\*\*)/).map((part, index) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        // Remove os asteriscos e aplica estilo
+        return (
+          <span key={index} className="font-bold text-violet-400">
+            {part.slice(2, -2)}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -146,7 +173,6 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
         </Button>
       </DialogTrigger>
 
-      {/* MUDANÇA VISUAL: Fundo Dark e Bordas Dark */}
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-background border-border text-foreground shadow-2xl">
         {/* HEADER */}
         <div className="p-6 border-b border-border bg-muted/10">
@@ -165,7 +191,7 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
         <ScrollArea className="flex-1 p-6 md:p-8 bg-background">
           {analysis ? (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {/* BLOCO DE TEXTO DA ANÁLISE (Estilo Dark Clean) */}
+              {/* BLOCO DE TEXTO DA ANÁLISE */}
               <div className="bg-card border border-border p-6 md:p-8 rounded-xl shadow-sm relative overflow-hidden">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="p-2 bg-violet-500/10 rounded-lg">
@@ -174,12 +200,15 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
                   <h3 className="text-lg font-semibold text-card-foreground">Diagnóstico do Período</h3>
                 </div>
 
-                <p className="text-muted-foreground leading-relaxed whitespace-pre-line text-base">{aiText}</p>
+                {/* Renderização com Estilo */}
+                <p className="text-muted-foreground leading-relaxed whitespace-pre-line text-base">
+                  {renderStyledText(aiText)}
+                </p>
               </div>
 
               {/* GRID DE KPIs ANALÍTICOS */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* 1. Melhor Horário (Média) */}
+                {/* 1. Melhor Horário */}
                 <Card className="bg-card border-border shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-xs font-bold uppercase tracking-wider text-green-500 flex items-center gap-2">
@@ -190,24 +219,24 @@ export function AIAnalysisDialog({ data }: AIAnalysisDialogProps) {
                   <CardContent>
                     <div className="text-2xl font-bold text-card-foreground">{analysis.bestTime.horario}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Média de {analysis.bestTime.media.toFixed(1)} alunos
+                      Eficiência média: {analysis.bestTime.media.toFixed(1)}
                     </p>
                   </CardContent>
                 </Card>
 
-                {/* 2. Pior Horário (Média) */}
+                {/* 2. Horário Crítico (Mais Alertas) */}
                 <Card className="bg-card border-red-500/30 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-1 h-full bg-red-500" />
                   <CardHeader className="pb-2">
                     <CardTitle className="text-xs font-bold uppercase tracking-wider text-red-500 flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4" />
-                      Atenção Necessária
+                      Foco de Atenção
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-card-foreground">{analysis.worstTime.horario}</div>
+                    <div className="text-2xl font-bold text-card-foreground">{analysis.criticalTime.horario}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Baixa média de {analysis.worstTime.media.toFixed(1)} alunos
+                      Concentra <strong>{analysis.criticalTime.alertCount} alertas</strong>
                     </p>
                   </CardContent>
                 </Card>
