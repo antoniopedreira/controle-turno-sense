@@ -3,12 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subWeeks } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
 
-export type FilterPeriod = "today" | "week" | "month" | "custom";
+export type FilterPeriod = "today" | "week" | "lastWeek" | "month" | "custom";
 
 interface DashboardHeaderProps {
   onRefresh?: () => void;
@@ -40,6 +40,13 @@ export function DashboardHeader({
         onDateRangeChange({
           from: startOfWeek(today, { locale: ptBR }),
           to: endOfWeek(today, { locale: ptBR }),
+        });
+        break;
+      case "lastWeek":
+        const lastWeek = subWeeks(today, 1);
+        onDateRangeChange({
+          from: startOfWeek(lastWeek, { locale: ptBR }),
+          to: endOfWeek(lastWeek, { locale: ptBR }),
         });
         break;
       case "month":
@@ -82,8 +89,8 @@ export function DashboardHeader({
           <SelectContent>
             <SelectItem value="today">Hoje</SelectItem>
             <SelectItem value="week">Esta Semana</SelectItem>
+            <SelectItem value="lastWeek">Semana Passada</SelectItem>
             <SelectItem value="month">Este Mês</SelectItem>
-            {/* Opção Personalizado removida conforme solicitado */}
           </SelectContent>
         </Select>
 
